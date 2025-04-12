@@ -2,20 +2,87 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { getModuleBuildInfo } from "next/dist/build/webpack/loaders/get-module-build-info";
+import Mercator from "../../../public/mercator.png";
+import Spar from "../../../public/spar.png";
+import Image from "next/image";
 
 export default function ShoppingList() {
   const [items, setItems] = useState([]);
   const [productData, setProductData] = useState({});
   const [loadingProducts, setLoadingProducts] = useState({});
-  const [expandedItem, setExpandedItem] = useState(null);
-  const [visibleProductCounts, setVisibleProductCounts] = useState({});
+  const [openDropdowns, setOpenDropdowns] = useState({}); // Track open/closed state of dropdowns
+  const [selectedProducts, setSelectedProducts] = useState({}); // Track selected products
+  const [fetchStatus, setFetchStatus] = useState('idle'); // Track overall fetch status
   
   useEffect(() => {
     // Load shopping list from localStorage
     const storedItems = JSON.parse(localStorage.getItem('shoppingList') || '[]');
     setItems(storedItems);
+
+    // Auto-load products if we have items
+    if (storedItems.length > 0) {
+      batchFetchProducts(storedItems);
+    }
   }, []);
+  
+  // Batch process ingredients to avoid rate limiting
+  const batchFetchProducts = async (itemsList) => {
+    setFetchStatus('loading');
+    
+    // Extract unique ingredients to avoid duplicate requests
+    const uniqueIngredients = [...new Set(itemsList.map(item => {
+      const { ingredient } = parseItemName(item.name);
+      return ingredient;
+    }))];
+    
+    console.log(`Starting batch fetch for ${uniqueIngredients.length} unique ingredients`);
+    
+    // Process in small batches with delay between batches
+    const batchSize = 3;
+    const delayBetweenBatches = 1500; // 1.5 seconds between batches
+    
+    for (let i = 0; i < uniqueIngredients.length; i += batchSize) {
+      const batch = uniqueIngredients.slice(i, i + batchSize);
+      
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.join(', ')}`);
+      
+      // Show loading state for current batch
+      batch.forEach(ingredient => {
+        setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
+      });
+      
+      // Process each ingredient in the current batch in parallel
+      await Promise.all(batch.map(async (ingredient) => {
+        try {
+          // Skip if we already have data for this ingredient
+          if (productData[ingredient]) return;
+          
+          const products = await fetchProductsForIngredient(ingredient);
+          
+          // Update product data
+          setProductData(prev => ({ ...prev, [ingredient]: products }));
+          
+          // Set the cheapest product as selected
+          if (products && products.length > 0) {
+            setSelectedProducts(prev => ({ ...prev, [ingredient]: products[0] }));
+          }
+        } catch (error) {
+          console.error(`Error processing ${ingredient}:`, error);
+        } finally {
+          setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
+        }
+      }));
+      
+      // If there are more batches to process, add delay
+      if (i + batchSize < uniqueIngredients.length) {
+        console.log(`Waiting ${delayBetweenBatches}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+      }
+    }
+    
+    setFetchStatus('complete');
+    console.log('All batches processed');
+  };
   
   const removeItem = (index) => {
     const newItems = [...items];
@@ -26,7 +93,39 @@ export default function ShoppingList() {
   
   const clearList = () => {
     setItems([]);
+    setProductData({});
+    setSelectedProducts({});
     localStorage.setItem('shoppingList', '[]');
+  };
+
+  // Select a different product for an ingredient
+  const selectProduct = (ingredient, product) => {
+    setSelectedProducts(prev => ({ ...prev, [ingredient]: product }));
+    // Close the dropdown after selection
+    setOpenDropdowns(prev => ({ ...prev, [ingredient]: false }));
+  };
+
+  // Toggle dropdown state for an ingredient
+  const toggleDropdown = async (ingredient) => {
+    // If we don't have products yet for this ingredient, fetch them
+    if (!productData[ingredient] || productData[ingredient].length === 0) {
+      setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
+      const products = await fetchProductsForIngredient(ingredient);
+      setProductData(prev => ({ ...prev, [ingredient]: products }));
+      
+      // Set the cheapest product as selected if not already set
+      if (products.length > 0 && !selectedProducts[ingredient]) {
+        setSelectedProducts(prev => ({ ...prev, [ingredient]: products[0] }));
+      }
+      
+      setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
+    }
+    
+    // Toggle dropdown state
+    setOpenDropdowns(prev => ({ 
+      ...prev, 
+      [ingredient]: !prev[ingredient] 
+    }));
   };
 
   // Helper function to parse price strings into numbers for sorting
@@ -79,6 +178,21 @@ export default function ShoppingList() {
         } else if (mercatorData) {
           mercatorProducts = [mercatorData];
         }
+        
+        // Simplify Mercator products
+        mercatorProducts = mercatorProducts.map(product => {
+          // Parse price string to float
+          const priceString = product.data?.current_price || 'N/A';
+          const priceValue = priceString !== 'N/A' ? parsePriceValue(priceString) : Infinity;
+          
+          return {
+            title: product.data?.name || 'Unknown Product',
+            price: priceValue, // Store as float
+            displayPrice: priceString, // Keep original for display
+            image: product.mainImageSrc || '',
+            store: 'Mercator'
+          };
+        });
       }
       
       // Process SPAR data
@@ -87,82 +201,34 @@ export default function ShoppingList() {
         const sparData = await sparResponse.json();
         // SPAR API returns data in a different format - handle it appropriately
         if (sparData && sparData.hits && Array.isArray(sparData.hits)) {
-          sparProducts = sparData.hits.map(hit => ({
-            data: {
-              name: hit.masterValues?.title || hit.values?.title || 'Unknown Product',
-              current_price: hit.masterValues?.price || hit.values?.price || 'N/A',
-            },
-            mainImageSrc: hit.masterValues?.imageURL || hit.values?.imageURL,
-            store: 'SPAR'
-          }));
+          sparProducts = sparData.hits.map(hit => {
+            // Ensure price is a float
+            const priceValue = typeof hit.masterValues?.price === 'number' 
+              ? hit.masterValues.price 
+              : parsePriceValue(hit.masterValues?.price || 'N/A');
+            
+            return {
+              title: hit.masterValues?.title || 'Unknown Product',
+              price: priceValue, // Store as float
+              displayPrice: hit.masterValues?.price || 'N/A', // Keep original for display
+              image: hit.masterValues?.['image-url'] || '',
+              store: 'SPAR'
+            };
+          });
         }
       }
-      
-      // Add store identifier to Mercator products
-      mercatorProducts = mercatorProducts.map(product => ({
-        ...product,
-        store: 'Mercator'
-      }));
       
       // Combine all products
       const allProducts = [...mercatorProducts, ...sparProducts];
       
       // Sort products by price from cheapest to most expensive
-      const sortedProducts = allProducts.sort((a, b) => {
-        const priceA = parsePriceValue(a.data?.current_price);
-        const priceB = parsePriceValue(b.data?.current_price);
-        return priceA - priceB;
-      });
-      
-      console.log(`Fetched ${sortedProducts.length} products for ${ingredient}:`, sortedProducts);
+      const sortedProducts = allProducts.sort((a, b) => a.price - b.price);
       
       return sortedProducts;
     } catch (error) {
       console.error(`Error fetching products for ${ingredient}:`, error);
       return [];
     }
-  };
-  
-  // Handle showing products for an ingredient
-  const handleShowProducts = async (ingredient, index) => {
-    if (expandedItem === index) {
-      // If already expanded, collapse it
-      setExpandedItem(null);
-      return;
-    }
-    
-    // Set this item as expanded
-    setExpandedItem(index);
-    
-    // Initialize visible product count if not already set
-    if (!visibleProductCounts[ingredient]) {
-      setVisibleProductCounts(prev => ({ ...prev, [ingredient]: 5 }));
-    }
-    
-    // If we already have products for this ingredient, don't fetch again
-    if (productData[ingredient]) {
-      return;
-    }
-    
-    // Set loading state for this ingredient
-    setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
-    
-    // Fetch products
-    const products = await fetchProductsForIngredient(ingredient);
-    
-    // Update product data
-    setProductData(prev => ({ ...prev, [ingredient]: products }));
-    
-    // Clear loading state
-    setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
-  };
-  
-  // Function to load more products for an ingredient
-  const loadMoreProducts = (ingredient) => {
-    setVisibleProductCounts(prev => ({
-      ...prev,
-      [ingredient]: (prev[ingredient] || 5) + 5
-    }));
   };
 
   // Enhanced helper function to separate quantity and ingredient
@@ -243,12 +309,20 @@ export default function ShoppingList() {
         </div>
       ) : (
         <>
-          <button 
-            onClick={clearList}
-            className="mb-4 bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm"
-          >
-            Clear List
-          </button>
+          <div className="mb-4 flex items-center justify-between">
+            <button 
+              onClick={clearList}
+              className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm"
+            >
+              Clear List
+            </button>
+            
+            {fetchStatus === 'loading' && (
+              <span className="text-sm text-blue-600">
+                Loading product data...
+              </span>
+            )}
+          </div>
           
           <div className="bg-white rounded-lg shadow-md overflow-hidden">
             <ul className="divide-y divide-[#e8e3d9]">
@@ -258,8 +332,12 @@ export default function ShoppingList() {
                   ? { quantity: item.quantity, ingredient: item.ingredient } 
                   : parseItemName(item.name);
                 
-                // Get the number of products to show for this ingredient
-                const visibleCount = visibleProductCounts[ingredient] || 5;
+                // Get the selected product for this ingredient
+                const selectedProduct = selectedProducts[ingredient];
+                // Check if dropdown is open
+                const isDropdownOpen = openDropdowns[ingredient];
+                // Get products for this ingredient
+                const products = productData[ingredient] || [];
                 
                 return (
                   <li key={index} className="p-4 flex flex-col">
@@ -284,13 +362,8 @@ export default function ShoppingList() {
                           )}
                         </div>
                       </div>
+                      
                       <div className="flex items-center">
-                        <button 
-                          onClick={() => handleShowProducts(ingredient, index)}
-                          className="text-blue-500 hover:text-blue-700 mr-2 text-sm"
-                        >
-                          {expandedItem === index ? 'Hide Products' : 'Find Products'}
-                        </button>
                         <button 
                           onClick={() => removeItem(index)}
                           className="text-gray-500 hover:text-red-500 ml-2"
@@ -302,44 +375,99 @@ export default function ShoppingList() {
                       </div>
                     </div>
                     
-                    {/* Products section (expanded when clicked) */}
-                    {expandedItem === index && (
-                      <div className="mt-3 pl-4 border-l-2 border-blue-200">
-                        {loadingProducts[ingredient] ? (
-                          <p className="text-sm text-gray-500">Loading products...</p>
-                        ) : productData[ingredient] && productData[ingredient].length > 0 ? (
-                          <div>
-                            <p className="text-sm font-medium mb-2">Available products (sorted by price):</p>
-                            <ul className="text-sm space-y-2">
-                              {productData[ingredient].slice(0, visibleCount).map((product, i) => (
-                                <li key={i} className="flex items-center p-2 hover:bg-gray-50 rounded">
-                                  {product.mainImageSrc && (
-                                    <img src={product.mainImageSrc} alt={product.data?.name || 'Product'} className="w-10 h-10 object-cover mr-2" />
-                                  )}
-                                  <div className="flex-1">
-                                    <p className="font-medium">{product.data?.name || 'Unknown product'}</p>
-                                    {product.data?.current_price && <p>{product.data.current_price}</p>}
-                                  </div>
-                                  <span className={`text-xs font-medium px-2 py-1 rounded ${product.store === 'SPAR' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                    {product.store}
-                                  </span>
-                                </li>
-                              ))}
-                              {productData[ingredient].length > visibleCount && (
-                                <li 
-                                  className="text-blue-500 hover:text-blue-700 hover:underline cursor-pointer p-2 text-center"
-                                  onClick={() => loadMoreProducts(ingredient)}
-                                >
-                                  Show {Math.min(5, productData[ingredient].length - visibleCount)} more products
-                                </li>
-                              )}
-                            </ul>
+                    {/* Product selection dropdown */}
+                    <div className="mt-2 relative">
+                      <div 
+                        className="flex items-center bg-green-50 p-2 rounded-md cursor-pointer border hover:border-blue-300"
+                        onClick={() => toggleDropdown(ingredient)}
+                      >
+                        {selectedProduct ? (
+                          <>
+                            {selectedProduct.image && (
+                              <img src={selectedProduct.image} alt={selectedProduct.title} className="w-10 h-10 object-cover mr-2" />
+                            )}
+                            <div className="flex-1">
+                              <p className="text-sm font-medium">{selectedProduct.title}</p>
+                            </div>
+                            <div className="flex items-center">
+                              <span className="font-bold text-green-700 mr-3">{selectedProduct.displayPrice} €</span>
+                              <div className="w-6 h-6 flex items-center justify-center">
+                                <Image
+                                  src={selectedProduct.store === 'SPAR' ? Spar : Mercator}
+                                  alt={selectedProduct.store}
+                                  width={24}
+                                  height={24}
+                                  className="object-contain"
+                                />
+                              </div>
+                              <svg 
+                                className={`w-4 h-4 ml-3 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`} 
+                                fill="none" 
+                                viewBox="0 0 24 24" 
+                                stroke="currentColor"
+                              >
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                              </svg>
+                            </div>
+                          </>
+                        ) : loadingProducts[ingredient] ? (
+                          <div className="flex-1 text-sm text-gray-500 italic">
+                            Finding best prices...
                           </div>
                         ) : (
-                          <p className="text-sm text-gray-500">No products found for this ingredient.</p>
+                          <div className="flex-1 text-sm text-gray-500">
+                            Click to select a product
+                          </div>
                         )}
                       </div>
-                    )}
+                      
+                      {/* Dropdown content */}
+                      {isDropdownOpen && (
+                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
+                          {loadingProducts[ingredient] ? (
+                            <div className="p-3 text-sm text-gray-500">Loading products...</div>
+                          ) : products.length > 0 ? (
+                            <ul className="py-1">
+                              {products.map((product, i) => (
+                                <li 
+                                  key={i} 
+                                  className={`flex items-center p-2 hover:bg-gray-50 cursor-pointer ${selectedProduct === product ? 'bg-green-50' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    selectProduct(ingredient, product);
+                                  }}
+                                >
+                                  {product.image && (
+                                    <img src={product.image} alt={product.title || 'Product'} className="w-10 h-10 object-cover mr-2" />
+                                  )}
+                                  <div className="flex-1">
+                                    <p className="font-medium text-sm">{product.title || 'Unknown product'}</p>
+                                    {product.displayPrice && <p className="text-sm">{product.displayPrice} €</p>}
+                                  </div>
+                                  <Image
+                                    src={product.store === 'SPAR' ? Spar : Mercator}
+                                    alt={product.store}
+                                    width={24}
+                                    height={24}
+                                    className="object-contain ml-2"
+                                  />
+                                  
+                                  {selectedProduct === product && (
+                                    <span className="ml-2 text-green-600">
+                                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                      </svg>
+                                    </span>
+                                  )}
+                                </li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="p-3 text-sm text-gray-500">No products found for this ingredient.</div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </li>
                 );
               })}
