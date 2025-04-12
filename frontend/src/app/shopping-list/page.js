@@ -9,6 +9,7 @@ export default function ShoppingList() {
   const [productData, setProductData] = useState({});
   const [loadingProducts, setLoadingProducts] = useState({});
   const [expandedItem, setExpandedItem] = useState(null);
+  const [visibleProductCounts, setVisibleProductCounts] = useState({});
   
   useEffect(() => {
     // Load shopping list from localStorage
@@ -28,39 +29,75 @@ export default function ShoppingList() {
     localStorage.setItem('shoppingList', '[]');
   };
 
-  
+  // Helper function to parse price strings into numbers for sorting
+  const parsePriceValue = (priceStr) => {
+    if (!priceStr || typeof priceStr !== 'string') return Infinity;
+    // Remove currency symbol and any non-numeric chars except decimal point
+    const numericStr = priceStr.replace(/[^0-9.,]/g, '').replace(',', '.');
+    const value = parseFloat(numericStr);
+    return isNaN(value) ? Infinity : value;
+  };
+
   const fetchProductsForIngredient = async (ingredient) => {
     try {
-      // First, use Gemini to simplify the search query
-      const geminiResponse = await fetch('/api/auth/gemini', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ input: ingredient }),
+      // Fetch from both Mercator and SPAR APIs
+      const [mercatorResponse, sparResponse] = await Promise.all([
+        fetch(`/api/products-mercator?query=${encodeURIComponent(ingredient)}`),
+        fetch(`/api/products-spar?query=${encodeURIComponent(ingredient)}`)
+      ]);
+      
+      // Process Mercator data
+      let mercatorProducts = [];
+      if (mercatorResponse.ok) {
+        const mercatorData = await mercatorResponse.json();
+        if (mercatorData && Array.isArray(mercatorData)) {
+          mercatorProducts = mercatorData;
+        } else if (mercatorData && mercatorData.products && Array.isArray(mercatorData.products)) {
+          mercatorProducts = mercatorData.products;
+        } else if (mercatorData) {
+          mercatorProducts = [mercatorData];
+        }
+      }
+      
+      // Process SPAR data
+      let sparProducts = [];
+      if (sparResponse.ok) {
+        const sparData = await sparResponse.json();
+        // SPAR API returns data in a different format - handle it appropriately
+        if (sparData && sparData.hits && Array.isArray(sparData.hits)) {
+          sparProducts = sparData.hits.map(hit => ({
+            data: {
+              name: hit.masterValues?.title || hit.values?.title || 'Unknown Product',
+              current_price: hit.masterValues?.price || hit.values?.price || 'N/A',
+            },
+            mainImageSrc: hit.masterValues?.imageURL || hit.values?.imageURL,
+            store: 'SPAR'
+          }));
+        }
+      }
+      
+      // Add store identifier to Mercator products
+      mercatorProducts = mercatorProducts.map(product => ({
+        ...product,
+        store: 'Mercator'
+      }));
+      
+      // Combine all products
+      const allProducts = [...mercatorProducts, ...sparProducts];
+      
+      // Sort products by price from cheapest to most expensive
+      const sortedProducts = allProducts.sort((a, b) => {
+        const priceA = parsePriceValue(a.data?.current_price);
+        const priceB = parsePriceValue(b.data?.current_price);
+        return priceA - priceB;
       });
       
-      if (!geminiResponse.ok) {
-        throw new Error(`Failed to process with Gemini: ${geminiResponse.status}`);
-      }
+      console.log(`Fetched ${sortedProducts.length} products for ${ingredient}:`, sortedProducts);
       
-      const geminiData = await geminiResponse.json();
-      const simplifiedQuery = geminiData.result || ingredient;
-      
-      console.log(`Original: "${ingredient}" -> Simplified: "${simplifiedQuery}"`);
-      
-      // Now use the simplified query to search for products
-      const response = await fetch(`/api/products?query=${encodeURIComponent(simplifiedQuery)}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch products: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log(`Fetched products for ${simplifiedQuery}:`, data);
-      
-      return data;
+      return sortedProducts;
     } catch (error) {
       console.error(`Error fetching products for ${ingredient}:`, error);
-      return null;
+      return [];
     }
   };
   
@@ -74,6 +111,11 @@ export default function ShoppingList() {
     
     // Set this item as expanded
     setExpandedItem(index);
+    
+    // Initialize visible product count if not already set
+    if (!visibleProductCounts[ingredient]) {
+      setVisibleProductCounts(prev => ({ ...prev, [ingredient]: 5 }));
+    }
     
     // If we already have products for this ingredient, don't fetch again
     if (productData[ingredient]) {
@@ -91,6 +133,14 @@ export default function ShoppingList() {
     
     // Clear loading state
     setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
+  };
+  
+  // Function to load more products for an ingredient
+  const loadMoreProducts = (ingredient) => {
+    setVisibleProductCounts(prev => ({
+      ...prev,
+      [ingredient]: (prev[ingredient] || 5) + 5
+    }));
   };
 
   // Enhanced helper function to separate quantity and ingredient
@@ -186,6 +236,9 @@ export default function ShoppingList() {
                   ? { quantity: item.quantity, ingredient: item.ingredient } 
                   : parseItemName(item.name);
                 
+                // Get the number of products to show for this ingredient
+                const visibleCount = visibleProductCounts[ingredient] || 5;
+                
                 return (
                   <li key={index} className="p-4 flex flex-col">
                     <div className="flex items-center justify-between">
@@ -232,24 +285,30 @@ export default function ShoppingList() {
                       <div className="mt-3 pl-4 border-l-2 border-blue-200">
                         {loadingProducts[ingredient] ? (
                           <p className="text-sm text-gray-500">Loading products...</p>
-                        ) : productData[ingredient] && productData[ingredient].products ? (
+                        ) : productData[ingredient] && productData[ingredient].length > 0 ? (
                           <div>
-                            <p className="text-sm font-medium mb-2">Available products:</p>
+                            <p className="text-sm font-medium mb-2">Available products (sorted by price):</p>
                             <ul className="text-sm space-y-2">
-                              {productData[ingredient].products.slice(0, 5).map((product, i) => (
+                              {productData[ingredient].slice(0, visibleCount).map((product, i) => (
                                 <li key={i} className="flex items-center p-2 hover:bg-gray-50 rounded">
-                                  {product.image && (
-                                    <img src={product.imageUrl} alt={product.name} className="w-10 h-10 object-cover mr-2" />
+                                  {product.mainImageSrc && (
+                                    <img src={product.mainImageSrc} alt={product.data?.name || 'Product'} className="w-10 h-10 object-cover mr-2" />
                                   )}
-                                  <div>
-                                    <p className="font-medium">{product.name}</p>
-                                    {product.price && <p>{product.price} €</p>}
+                                  <div className="flex-1">
+                                    <p className="font-medium">{product.data?.name || 'Unknown product'}</p>
+                                    {product.data?.current_price && <p>{product.data.current_price}</p>}
                                   </div>
+                                  <span className={`text-xs font-medium px-2 py-1 rounded ${product.store === 'SPAR' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                                    {product.store}
+                                  </span>
                                 </li>
                               ))}
-                              {productData[ingredient].products.length > 5 && (
-                                <li className="text-blue-500 hover:underline cursor-pointer">
-                                  + {productData[ingredient].products.length - 5} more products
+                              {productData[ingredient].length > visibleCount && (
+                                <li 
+                                  className="text-blue-500 hover:text-blue-700 hover:underline cursor-pointer p-2 text-center"
+                                  onClick={() => loadMoreProducts(ingredient)}
+                                >
+                                  Show {Math.min(5, productData[ingredient].length - visibleCount)} more products
                                 </li>
                               )}
                             </ul>

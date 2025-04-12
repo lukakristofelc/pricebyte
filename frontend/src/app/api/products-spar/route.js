@@ -10,12 +10,13 @@ export async function GET(request) {
   }
   
   try {
-    const response = await fetch(
-      `https://mercatoronline.si/products/browseProducts/getProducts?limit=100&offset=0&filterData%5Bsearch%5D=${encodeURIComponent(query)}`
-    );
+    // Using the SPAR API endpoint with the query parameter
+    const sparUrl = `https://search-spar.spar-ics.com/fact-finder/rest/v4/search/products_lmos_si?query=jajca&page=1&hitsPerPage=400&sid=MS43YzRzd21kdHBoU2F0IEFwciAxMiAyMDI1&useAsn=false&substringFilter=title:!product-number`;
+    
+    const response = await fetch(sparUrl);
     
     if (!response.ok) {
-      throw new Error(`Error from Mercator API: ${response.status}`);
+      throw new Error(`Error from SPAR API: ${response.status}`);
     }
     
     const data = await response.json();
