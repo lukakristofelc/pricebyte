@@ -1,25 +1,25 @@
 import {Injectable} from '@nestjs/common';
 import {InjectRepository} from '@mikro-orm/nestjs';
 import {EntityManager, EntityRepository} from '@mikro-orm/core';
-import {Shop} from "../../entities/shop.entity";
+import {User} from "../../entities/user.entity";
 
 @Injectable()
-export class ShopService {
+export class UserService {
     constructor(
-        @InjectRepository(Shop)
-        private readonly shopRepo: EntityRepository<Shop>,
+        @InjectRepository(User)
+        private readonly userRepo: EntityRepository<User>,
         private readonly em: EntityManager,
     ) {}
 
-    async findAll(): Promise<Shop[]> {
-        return await this.shopRepo.findAll();
+    async findAll(): Promise<User[]> {
+        return await this.userRepo.findAll();
     }
 
-    async findOne(id: number): Promise<Shop | null> {
-        return await this.shopRepo.findOne({ shopId: id });
+    async findOne(id: number): Promise<User | null> {
+        return await this.userRepo.findOne({ user_id: id });
     }
 
-/*    async create(userData: Pick<User, 'username' | 'password_hash' | 'email'>): Promise<User> {
+    async create(userData: Pick<User, 'username' | 'password_hash' | 'email'>): Promise<User> {
         const data = { ...userData} as User;
         const user = this.em.create(User, data);
 
@@ -27,10 +27,10 @@ export class ShopService {
 
         return user;
     }
-*/
+
 
     async remove(id: number): Promise<void> {
-        const user = await this.shopRepo.findOne({ shopId: id });
+        const user = await this.userRepo.findOne({ user_id: id });
         if (user) {
             await this.em.removeAndFlush(user);
         }

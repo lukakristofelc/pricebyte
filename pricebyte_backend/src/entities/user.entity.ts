@@ -1,20 +1,20 @@
 import { Collection, Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/core';
-import { OrderEntity } from './order.entity';
+import {Recipe} from "./recipe.entity";
 
 @Entity({ tableName: 'users' })
 export class User {
-    @PrimaryKey({ columnType: 'int', fieldName: 'user_id' })
-    userId!: number;
+    @PrimaryKey()
+    user_id!: number;
 
-    @Property({ length: 100 })
+    @Property()
     username!: string;
 
-    @Property({ length: 255 })
-    passwordHash!: string;
+    @Property({ unique: true })
+    email!: string;
 
-    @Property({ fieldName: 'created', columnType: 'timestamp' })
-    created: Date = new Date();
+    @Property({ hidden: true })
+    password_hash!: string;
 
-    @OneToMany(() => OrderEntity, (order) => order.user)
-    orders = new Collection<OrderEntity>(this);
+    @OneToMany(() => Recipe, recipe => recipe.user)
+    recipes = new Collection<Recipe>(this);
 }

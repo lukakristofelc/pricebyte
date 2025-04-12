@@ -1,33 +1,32 @@
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
 import { User } from './entities/user.entity';
-import { OrderEntity } from './entities/order.entity';
-import { ShopEntity } from './entities/shop.entity';
+import { RecipeDetail } from './entities/recipe-detail.entity';
+import { Shop } from './entities/shop.entity';
 import { defineConfig } from '@mikro-orm/postgresql';
+import {UserModule} from "./modules/user/user.module";
+import {Recipe} from "./entities/recipe.entity";
 import {ShopModule} from "./modules/shop/shop.module";
-import { ConfigModule } from '@nestjs/config';
+import {RecipeModule} from "./modules/recipe/recipe.module";
 
+//TODO: MOVE TO ENV
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
     MikroOrmModule.forRoot(defineConfig({
-      dbName: process.env.DB_NAME,
-      host: process.env.DB_HOST,
-      port: parseInt(process.env.DB_PORT || '5432'),
-      user: process.env.DB_USER,
+      dbName: 'defaultdb',
+      host: 'pricebyte-pricebyte.b.aivencloud.com',
+      port: 23424,
+      user: 'avnadmin',
       password: process.env.DB_PASSWORD,
-      entities: [User, OrderEntity, ShopEntity],
-      debug: process.env.NODE_ENV !== 'production',
+      entities: [User, RecipeDetail, Shop, Recipe],
+      debug: true,
       allowGlobalContext: true,
       driverOptions: {
         connection: {
           ssl: { rejectUnauthorized: false }
         }
       },
-    })),
-    ShopModule,
+    })), UserModule, ShopModule, RecipeModule
   ],
 })
 export class AppModule {}

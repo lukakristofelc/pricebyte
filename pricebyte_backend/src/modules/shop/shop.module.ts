@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { MikroOrmModule } from '@mikro-orm/nestjs';
-import { ShopEntity } from '../../entities/shop.entity';
-import { ShopService } from './shop.service';
-import { ShopController } from './shop.controller';
+import {ShopController} from "./shop.controller";
+import {ShopService} from "./shop.service";
+import {Shop} from "../../entities/shop.entity";
 
 @Module({
-    imports: [MikroOrmModule.forFeature([ShopEntity])],
+    imports: [MikroOrmModule.forFeature([Shop])],
     controllers: [ShopController],
     providers: [ShopService],
 })
