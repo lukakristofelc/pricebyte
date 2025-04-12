@@ -5,6 +5,9 @@ import Link from "next/link";
 
 export default function ShoppingList() {
   const [items, setItems] = useState([]);
+  const [productData, setProductData] = useState({});
+  const [loadingProducts, setLoadingProducts] = useState({});
+  const [expandedItem, setExpandedItem] = useState(null);
   
   useEffect(() => {
     // Load shopping list from localStorage
@@ -22,6 +25,51 @@ export default function ShoppingList() {
   const clearList = () => {
     setItems([]);
     localStorage.setItem('shoppingList', '[]');
+  };
+
+  // Update this function to use our proxy API route
+  const fetchProductsForIngredient = async (ingredient) => {
+    try {
+      const response = await fetch(`/api/products?query=${encodeURIComponent(ingredient)}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch products: ${response.status}`);
+      }
+      const data = await response.json();
+      console.log(`Fetched products for ${ingredient}:`, data);
+      return data;
+    } catch (error) {
+      console.error(`Error fetching products for ${ingredient}:`, error);
+      return null;
+    }
+  };
+  
+  // Handle showing products for an ingredient
+  const handleShowProducts = async (ingredient, index) => {
+    if (expandedItem === index) {
+      // If already expanded, collapse it
+      setExpandedItem(null);
+      return;
+    }
+    
+    // Set this item as expanded
+    setExpandedItem(index);
+    
+    // If we already have products for this ingredient, don't fetch again
+    if (productData[ingredient]) {
+      return;
+    }
+    
+    // Set loading state for this ingredient
+    setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
+    
+    // Fetch products
+    const products = await fetchProductsForIngredient(ingredient);
+    
+    // Update product data
+    setProductData(prev => ({ ...prev, [ingredient]: products }));
+    
+    // Clear loading state
+    setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
   };
 
   // Enhanced helper function to separate quantity and ingredient
@@ -118,35 +166,78 @@ export default function ShoppingList() {
                   : parseItemName(item.name);
                 
                 return (
-                  <li key={index} className="p-4 flex items-center justify-between">
-                    <div className="flex-1 flex">
-                      {/* Quantity in its own element with distinct styling */}
-                      {quantity && (
-                        <div className="w-20 min-w-20 font-medium text-gray-700 mr-2 bg-gray-50 rounded px-2 py-1 flex items-center justify-center">
-                          {quantity}
-                        </div>
-                      )}
-                      
-                      {/* Ingredient name in separate element */}
-                      <div className="flex-1">
-                        <p className="text-gray-800">{ingredient}</p>
-                        {item.recipeName && (
-                          <p className="text-xs text-gray-500">
-                            From: <Link href={`/recipe/${item.recipeId}`} className="text-[#9cb99c] hover:underline">
-                              {item.recipeName}
-                            </Link>
-                          </p>
+                  <li key={index} className="p-4 flex flex-col">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 flex">
+                        {/* Quantity in its own element with distinct styling */}
+                        {quantity && (
+                          <div className="w-20 min-w-20 font-medium text-gray-700 mr-2 bg-gray-50 rounded px-2 py-1 flex items-center justify-center">
+                            {quantity}
+                          </div>
                         )}
+                        
+                        {/* Ingredient name in separate element */}
+                        <div className="flex-1">
+                          <p className="text-gray-800">{ingredient}</p>
+                          {item.recipeName && (
+                            <p className="text-xs text-gray-500">
+                              From: <Link href={`/recipe/${item.recipeId}`} className="text-[#9cb99c] hover:underline">
+                                {item.recipeName}
+                              </Link>
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center">
+                        <button 
+                          onClick={() => handleShowProducts(ingredient, index)}
+                          className="text-blue-500 hover:text-blue-700 mr-2 text-sm"
+                        >
+                          {expandedItem === index ? 'Hide Products' : 'Find Products'}
+                        </button>
+                        <button 
+                          onClick={() => removeItem(index)}
+                          className="text-gray-500 hover:text-red-500 ml-2"
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => removeItem(index)}
-                      className="text-gray-500 hover:text-red-500"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
+                    
+                    {/* Products section (expanded when clicked) */}
+                    {expandedItem === index && (
+                      <div className="mt-3 pl-4 border-l-2 border-blue-200">
+                        {loadingProducts[ingredient] ? (
+                          <p className="text-sm text-gray-500">Loading products...</p>
+                        ) : productData[ingredient] && productData[ingredient].products ? (
+                          <div>
+                            <p className="text-sm font-medium mb-2">Available products:</p>
+                            <ul className="text-sm space-y-2">
+                              {productData[ingredient].products.slice(0, 5).map((product, i) => (
+                                <li key={i} className="flex items-center p-2 hover:bg-gray-50 rounded">
+                                  {product.image && (
+                                    <img src={product.imageUrl} alt={product.name} className="w-10 h-10 object-cover mr-2" />
+                                  )}
+                                  <div>
+                                    <p className="font-medium">{product.name}</p>
+                                    {product.price && <p>{product.price} €</p>}
+                                  </div>
+                                </li>
+                              ))}
+                              {productData[ingredient].products.length > 5 && (
+                                <li className="text-blue-500 hover:underline cursor-pointer">
+                                  + {productData[ingredient].products.length - 5} more products
+                                </li>
+                              )}
+                            </ul>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-gray-500">No products found for this ingredient.</p>
+                        )}
+                      </div>
+                    )}
                   </li>
                 );
               })}
