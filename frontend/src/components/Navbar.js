@@ -3,8 +3,9 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect, useRef } from "react";
-import Logo from "../../public/Logo.png"; // Adjust the path as necessary
-import LogoMobile from "../../public/LogoMobile.png"; // Adjust the path as necessary
+import Logo from "../../public/Logo.png";
+import LogoMobile from "../../public/LogoMobile.png";
+import { useAuth } from "../app/context/AuthContext";
 
 export default function Navbar() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -13,6 +14,16 @@ export default function Navbar() {
   const [showDropdown, setShowDropdown] = useState(false);
   const dropdownRef = useRef(null);
   const inputRef = useRef(null);
+  const userDropdownRef = useRef(null);
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  
+  // Auth context
+  const { user, isAuthenticated, logout } = useAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    setShowUserDropdown(false);
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -20,6 +31,10 @@ export default function Navbar() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target) &&
           inputRef.current && !inputRef.current.contains(event.target)) {
         setShowDropdown(false);
+      }
+      
+      if (userDropdownRef.current && !userDropdownRef.current.contains(event.target)) {
+        setShowUserDropdown(false);
       }
     }
     
@@ -76,6 +91,10 @@ export default function Navbar() {
 
   const handleSeeAllResults = () => {
     setShowDropdown(false); // Close the dropdown
+  };
+
+  const toggleUserDropdown = () => {
+    setShowUserDropdown(prev => !prev);
   };
 
   return (
@@ -186,21 +205,70 @@ export default function Navbar() {
         )}
       </div>
 
-      {/* Notification and User Icons */}
+      {/* Authentication and User Icons */}
       <div className="flex items-center gap-4">
-        {/* Notification Bell
-        <button className="p-2">
-          <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
-          </svg>
-        </button>
-         */}
-        {/* User Profile */}
-        <button className="w-8 h-8 rounded-full bg-[#9cb99c] flex items-center justify-center text-white">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
-          </svg>
-        </button>
+        {isAuthenticated ? (
+          <>
+            {/* Notification Bell - Uncomment if needed 
+            <button className="p-2">
+              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path>
+              </svg>
+            </button>
+            */}
+            
+            {/* User Profile Dropdown */}
+            <div className="relative" ref={userDropdownRef}>
+              <button 
+                className="w-8 h-8 rounded-full bg-[#9cb99c] flex items-center justify-center text-white"
+                onClick={toggleUserDropdown}
+              >
+                {user?.name?.charAt(0).toUpperCase() || (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+                  </svg>
+                )}
+              </button>
+              
+              {/* Dropdown Menu */}
+              {showUserDropdown && (
+                <div className="absolute right-0 mt-2 w-48 bg-white rounded-md shadow-lg z-10">
+                  <div className="py-1">
+                    <Link href="/profile">
+                      <div className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        Profile
+                      </div>
+                    </Link>
+                    <Link href="/settings">
+                      <div className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100">
+                        Settings
+                      </div>
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
+          <div className="flex items-center space-x-4">
+            <Link href="/auth/login">
+              <div className="text-[#9cb99c] hover:text-[#7d9e7d] font-medium">
+                Sign in
+              </div>
+            </Link>
+            <Link href="/auth/register">
+              <div className="bg-[#9cb99c] hover:bg-[#7d9e7d] text-white px-4 py-2 rounded-md font-medium">
+                Sign up
+              </div>
+            </Link>
+          </div>
+        )}
       </div>
     </nav>
   );

@@ -8,6 +8,8 @@ export default function RecipeDetail() {
   const [recipe, setRecipe] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [addingToList, setAddingToList] = useState(false);
+  const [addSuccess, setAddSuccess] = useState(false);
   
   const { id } = useParams();
   
@@ -43,6 +45,34 @@ export default function RecipeDetail() {
       fetchRecipe();
     }
   }, [id]);
+
+  const addIngredientsToShoppingList = async () => {
+    setAddingToList(true);
+    try {
+      const allIngredients = [];
+      
+      recipe.sections?.forEach(section => {
+        section.components?.forEach(component => {
+          allIngredients.push({
+            name: component.raw_text,
+            recipeId: recipe.id,
+            recipeName: recipe.name
+          });
+        });
+      });
+      
+      const currentList = JSON.parse(localStorage.getItem('shoppingList') || '[]');
+      const updatedList = [...currentList, ...allIngredients];
+      localStorage.setItem('shoppingList', JSON.stringify(updatedList));
+      
+      setAddSuccess(true);
+      setTimeout(() => setAddSuccess(false), 3000);
+    } catch (err) {
+      console.error("Error adding to shopping list:", err);
+    } finally {
+      setAddingToList(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -83,6 +113,29 @@ export default function RecipeDetail() {
         
         <div className="p-6">
           <h1 className="text-3xl font-bold mb-4">{recipe.name}</h1>
+          
+          <button
+            onClick={addIngredientsToShoppingList}
+            disabled={addingToList}
+            className="mb-6 bg-[#9cb99c] hover:bg-[#8aa98a] text-white py-2 px-4 rounded-md flex items-center transition-colors disabled:opacity-50"
+          >
+            {addingToList ? (
+              <span>Adding...</span>
+            ) : (
+              <>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                Add ingredients to shopping list
+              </>
+            )}
+          </button>
+          
+          {addSuccess && (
+            <div className="mb-4 p-2 bg-green-100 text-green-800 rounded-md">
+              Ingredients added to shopping list!
+            </div>
+          )}
           
           <div className="flex flex-wrap gap-4 mb-6">
             {recipe.total_time_minutes && (
