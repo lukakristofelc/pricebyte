@@ -1,54 +1,41 @@
-packages/*/package-lock.json
-sample/**/package-lock.json
-
-# dependencies
+# Node modules
 node_modules/
 
-# IDE
-/.idea
-/.awcache
-/.vscode
-/.devcontainer
-/.classpath
-/.project
-/.settings
-*.code-workspace
+# Build output
+dist/
+build/
 
-# Vim
-[._]*.s[a-v][a-z]
-[._]*.sw[a-p]
-[._]s[a-rt-v][a-z]
-[._]ss[a-gi-z]
-[._]sw[a-p]
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# bundle
-packages/**/*.d.ts
-packages/**/*.js
+# Environment variables
+.env
+.env.*.local
 
-# misc
+# OS files
 .DS_Store
-lerna-debug.log
-npm-debug.log
-yarn-error.log
-/**/npm-debug.log
-/packages/**/.npmignore
-/packages/**/LICENSE
+Thumbs.db
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# Optional: TypeScript cache
 *.tsbuildinfo
 
-# example
-/quick-start
-/example_dist
-/example
+# Optional: coverage reports
+coverage/
 
-# tests
-/test
-/benchmarks/memory
-/coverage
-/.nyc_output
-/packages/graphql
-/benchmarks/memory
-build/config\.gypi
+# Optional: local database or other dev artifacts
+*.sqlite
+*.db
 
-.npmrc
-pnpm-lock.yaml
-/.history
+# Optional: Docker
+docker-compose.override.yml
