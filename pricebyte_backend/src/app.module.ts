@@ -17,7 +17,6 @@ import {RecipeModule} from "./modules/recipe/recipe.module";
       host: 'pricebyte-pricebyte.b.aivencloud.com',
       port: 23424,
       user: 'avnadmin',
-      password: process.env.DB_PASSWORD,
       entities: [User, RecipeDetail, Shop, Recipe],
       debug: true,
       allowGlobalContext: true,

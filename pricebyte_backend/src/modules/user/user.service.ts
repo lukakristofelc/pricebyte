@@ -35,4 +35,12 @@ export class UserService {
             await this.em.removeAndFlush(user);
         }
     }
+
+    async findByUsername(username: string): Promise<User | null> {
+        return await this.userRepo.findOne({ username });
+    }
+
+    async findByEmail(email: string): Promise<User | null> {
+        return await this.userRepo.findOne({ email });
+    }
 }

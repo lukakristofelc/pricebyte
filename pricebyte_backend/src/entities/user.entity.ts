@@ -1,5 +1,7 @@
 import { Collection, Entity, OneToMany, PrimaryKey, Property } from '@mikro-orm/core';
 import {Recipe} from "./recipe.entity";
+import {ManyToMany} from "@mikro-orm/postgresql";
+
 
 @Entity({ tableName: 'users' })
 export class User {
@@ -12,7 +14,7 @@ export class User {
     @Property({ unique: true })
     email!: string;
 
-    @Property({ hidden: true })
+    @Property()
     password_hash!: string;
 
     @OneToMany(() => Recipe, recipe => recipe.user)
