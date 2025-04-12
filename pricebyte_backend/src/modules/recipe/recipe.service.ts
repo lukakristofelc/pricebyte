@@ -23,41 +23,53 @@ export class RecipeService {
     }
 
     async create(recipeData: CreateRecipeDto): Promise<Recipe> {
-        const user = await this.em.findOne(User, { user_id: recipeData.user_id });
-        if (!user) throw new Error(`User with ID ${recipeData.user_id} not found`);
+        try {
+            // Find the user
+            const user = await this.em.findOne(User, { user_id: recipeData.user_id });
+            if (!user) throw new Error(`User with ID ${recipeData.user_id} not found`);
 
-        const recipe = this.em.create(Recipe, {
-            recipe_name: recipeData.recipe_name,
-            user: user
-        });
+            // Create recipe (without details at first)
+            const recipe = new Recipe();
+            recipe.recipe_name = recipeData.recipe_name;
+            recipe.user = user;
 
-        // Process each recipe detail
-        for (const detailData of recipeData.recipeDetails) {
-            const shop = await this.em.findOne(Shop, { shopId: detailData.shop_id });
-            if (!shop) throw new Error(`Shop with ID ${detailData.shop_id} not found`);
+            // Persist the recipe first to get its ID
+            await this.em.persistAndFlush(recipe);
 
-            // Create RecipeDetail, don't include recipeDetailId (it will be auto-generated)
-            const detail = this.em.create(RecipeDetail, {
-                recipe: recipe,
-                shop: shop,
-                productName: detailData.productName,
-                qty: detailData.qty,
-                price: detailData.price,
-                orderTimestamp: new Date()
-            });
+            // Now create and add the recipe details
+            for (const detailData of recipeData.recipeDetails) {
+                const shop = await this.em.findOne(Shop, { shopId: detailData.shop_id });
+                if (!shop) throw new Error(`Shop with ID ${detailData.shop_id} not found`);
 
-            recipe.recipeDetails.add(detail);
+                const detail = new RecipeDetail();
+                detail.recipe = recipe;  // Sets recipe_id
+                detail.shop = shop;      // Sets shop_id
+                detail.productName = detailData.productName;
+                detail.qty = detailData.qty;
+                detail.price = detailData.price;
+                detail.orderTimestamp = new Date();
+
+                // Add to the recipe's collection
+                recipe.recipeDetails.add(detail);
+
+                // Persist each detail separately
+                await this.em.persist(detail);
+            }
+
+            // Flush all changes to database
+            await this.em.flush();
+
+            return recipe;
+        } catch (error) {
+            console.error('Error creating recipe:', error);
+            throw new Error(`Failed to create recipe: ${error.message}`);
         }
-
-        await this.em.persistAndFlush(recipe);
-
-        return recipe;
     }
 
     async remove(id: number): Promise<void> {
-        const user = await this.recipeRepo.findOne({ recipe_id: id });
-        if (user) {
-            await this.em.removeAndFlush(user);
+        const recipe = await this.recipeRepo.findOne({ recipe_id: id });
+        if (recipe) {
+            await this.em.removeAndFlush(recipe);
         }
     }
 }

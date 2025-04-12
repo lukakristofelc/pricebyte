@@ -4,24 +4,21 @@ import { Shop } from './shop.entity';
 
 @Entity({ tableName: 'recipe_details' })
 export class RecipeDetail {
-    @PrimaryKey({ type: 'integer', columnType: 'int4(32,0)' })
-    recipeDetailId!: number;
-
-    @ManyToOne(() => Recipe)
+    @ManyToOne(() => Recipe, { fieldName: 'recipe_id', primary: true })
     recipe!: Recipe;
 
-    @ManyToOne(() => Shop)
+    @ManyToOne(() => Shop, { fieldName: 'shop_id', primary: true })
     shop!: Shop;
 
-    @Property({ length: 100 })
+    @Property({ fieldName: 'product_name' })
     productName!: string;
 
     @Property()
     qty!: number;
 
-    @Property({ columnType: 'numeric(10,2)' })
+    @Property()
     price!: number;
 
-    @Property()
-    orderTimestamp: Date = new Date();
+    @Property({ fieldName: 'order_timestamp' })
+    orderTimestamp!: Date;
 }

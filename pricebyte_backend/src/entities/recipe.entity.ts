@@ -4,15 +4,15 @@ import { RecipeDetail } from './recipe-detail.entity';
 
 @Entity({ tableName: 'recipes' })
 export class Recipe {
-    @PrimaryKey({ type: 'integer', columnType: 'int4(32,0)' })
-    recipe_id?: number;
+    @PrimaryKey({ autoincrement: true })
+    recipe_id!: number;
 
-    @Property({ length: 100 })
+    @Property()
     recipe_name!: string;
 
-    @ManyToOne(() => User)
+    @ManyToOne(() => User, { fieldName: 'user_id' }) // Specify the correct column name
     user!: User;
 
-    @OneToMany(() => RecipeDetail, recipeDetail => recipeDetail.recipe)
+    @OneToMany(() => RecipeDetail, detail => detail.recipe)
     recipeDetails = new Collection<RecipeDetail>(this);
 }
