@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { getModuleBuildInfo } from "next/dist/build/webpack/loaders/get-module-build-info";
 
 export default function ShoppingList() {
   const [items, setItems] = useState([]);
@@ -27,15 +28,35 @@ export default function ShoppingList() {
     localStorage.setItem('shoppingList', '[]');
   };
 
-  // Update this function to use our proxy API route
+  
   const fetchProductsForIngredient = async (ingredient) => {
     try {
-      const response = await fetch(`/api/products?query=${encodeURIComponent(ingredient)}`);
+      // First, use Gemini to simplify the search query
+      const geminiResponse = await fetch('/api/auth/gemini', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ input: ingredient }),
+      });
+      
+      if (!geminiResponse.ok) {
+        throw new Error(`Failed to process with Gemini: ${geminiResponse.status}`);
+      }
+      
+      const geminiData = await geminiResponse.json();
+      const simplifiedQuery = geminiData.result || ingredient;
+      
+      console.log(`Original: "${ingredient}" -> Simplified: "${simplifiedQuery}"`);
+      
+      // Now use the simplified query to search for products
+      const response = await fetch(`/api/products?query=${encodeURIComponent(simplifiedQuery)}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch products: ${response.status}`);
       }
       const data = await response.json();
-      console.log(`Fetched products for ${ingredient}:`, data);
+      console.log(`Fetched products for ${simplifiedQuery}:`, data);
+      
       return data;
     } catch (error) {
       console.error(`Error fetching products for ${ingredient}:`, error);
