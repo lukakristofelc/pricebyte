@@ -17,5 +17,6 @@ export class RegisterDto {
 export class LoginDto {
     @IsString()
     @IsNotEmpty()
-    username: string;
+    email: string;
+    password_hash: string; // Already hashed from frontend
 }

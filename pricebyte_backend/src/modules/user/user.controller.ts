@@ -38,10 +38,8 @@ export class UserController {
 
     @Post('login')
     async login(@Body() loginData: LoginDto): Promise<{ success: boolean; user?: User; message?: string }> {
-        // Find user by username
-        const user = await this.userService.findByUsername(loginData.username);
+        const user = await this.userService.findByEmail(loginData.email);
 
-        // Frontend has already validated the password, just return user data if found
         if (user) {
             return { success: true, user };
         } else {
