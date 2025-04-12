@@ -40,10 +40,32 @@ export default function ShoppingList() {
 
   const fetchProductsForIngredient = async (ingredient) => {
     try {
+      const geminiResponse = await fetch('/api/auth/gemini', {
+         method: 'POST',
+         headers: {
+           'Content-Type': 'application/json',
+         },
+         body: JSON.stringify({ input: ingredient }),
+       });
+       
+       if (!geminiResponse.ok) {
+         throw new Error(`Failed to process with Gemini: ${geminiResponse.status}`);
+       }
+       
+       const geminiData = await geminiResponse.json();
+       const simplifiedQuery = geminiData.result || ingredient;
+
+      // Sanitize the simplified query to remove quotes and keep only the first word if needed
+      const cleanedQuery = simplifiedQuery
+        .replace(/['"]/g, '') // Remove quotes
+        .trim();    
+
+      console.log(`Fetching products for ${ingredient} using query: ${cleanedQuery}`);
+    
       // Fetch from both Mercator and SPAR APIs
       const [mercatorResponse, sparResponse] = await Promise.all([
-        fetch(`/api/products-mercator?query=${encodeURIComponent(ingredient)}`),
-        fetch(`/api/products-spar?query=${encodeURIComponent(ingredient)}`)
+        fetch(`/api/products-mercator?query=${encodeURIComponent(cleanedQuery)}`),
+        fetch(`/api/products-spar?query=${encodeURIComponent(cleanedQuery)}`)
       ]);
       
       // Process Mercator data

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import OpenAI from 'openai';
 
 export async function POST(request) {
   try {
@@ -13,7 +14,7 @@ export async function POST(request) {
     }
 
     // Prepare the prompt for Gemini
-    const prompt = `Return this string as a much simplified broad search query for an online store in slovenian: ${input}`;
+    const prompt = `Transform the following detailed ingredient description into a simplified, broad Slovenian search query. Remove brand names, adjectives, and any extra descriptors so that only the essential product name remains. For instance, 'Shredded low-moisture mozzarella cheese' should become 'mozzarella' in Slovenian. Return only the simplified product name in Slovenian: ${input}`;
     
     // Call the Gemini API
     const response = await fetch(

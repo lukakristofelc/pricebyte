@@ -11,7 +11,7 @@ export async function GET(request) {
   
   try {
     const response = await fetch(
-      `https://mercatoronline.si/products/browseProducts/getProducts?limit=100&offset=0&filterData%5Bsearch%5D=jajca`
+      `https://mercatoronline.si/products/browseProducts/getProducts?limit=100&offset=0&filterData%5Bsearch%5D=${encodeURIComponent(query)}`
     );
     
     if (!response.ok) {
