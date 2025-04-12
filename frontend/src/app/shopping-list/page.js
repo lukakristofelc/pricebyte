@@ -98,6 +98,15 @@ export default function ShoppingList() {
     localStorage.setItem('shoppingList', '[]');
   };
 
+  // Buy function to handle checkout process
+  const buyItems = () => {
+    if (window.confirm('Are you sure you want to buy these items?')) {
+      alert('Thank you for your purchase!');
+      // Clear the list after purchase
+      clearList();
+    }
+  };
+
   // Select a different product for an ingredient
   const selectProduct = (ingredient, product) => {
     setSelectedProducts(prev => ({ ...prev, [ingredient]: product }));
@@ -310,12 +319,20 @@ export default function ShoppingList() {
       ) : (
         <>
           <div className="mb-4 flex items-center justify-between">
-            <button 
-              onClick={clearList}
-              className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm"
-            >
-              Clear List
-            </button>
+            <div className="flex gap-3">
+              <button 
+                onClick={clearList}
+                className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm"
+              >
+                Clear List
+              </button>
+              <button
+                onClick={buyItems}
+                className="bg-[#9cb99c] hover:bg-[#8aa98a] text-white py-1 px-3 rounded-md text-sm"
+              >
+                Buy
+              </button>
+            </div>
             
             {fetchStatus === 'loading' && (
               <span className="text-sm text-blue-600">
