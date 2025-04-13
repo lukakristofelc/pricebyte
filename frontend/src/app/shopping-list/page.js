@@ -5,14 +5,48 @@ import Link from "next/link";
 import Mercator from "../../../public/mercator.png";
 import Spar from "../../../public/spar.png";
 import Image from "next/image";
+import { useAuth } from "../context/AuthContext";
+import { useRouter } from "next/navigation";
+
+const INITIAL_DELAY = 2000; // 2 seconds
+const MAX_RETRIES = 3;
+const BATCH_SIZE = 2; // Reduced from 3 to 2
 
 export default function ShoppingList() {
   const [items, setItems] = useState([]);
   const [productData, setProductData] = useState({});
   const [loadingProducts, setLoadingProducts] = useState({});
-  const [openDropdowns, setOpenDropdowns] = useState({}); // Track open/closed state of dropdowns
-  const [selectedProducts, setSelectedProducts] = useState({}); // Track selected products
-  const [fetchStatus, setFetchStatus] = useState('idle'); // Track overall fetch status
+  const [openDropdowns, setOpenDropdowns] = useState({});
+  const [selectedProducts, setSelectedProducts] = useState({});
+  const [fetchStatus, setFetchStatus] = useState('idle');
+  const [sortBy, setSortBy] = useState('name');
+  const [storeFilter, setStoreFilter] = useState('all');
+  
+  const { user, isAuthenticated, loading } = useAuth();
+  const router = useRouter();
+  
+  // Authentication check
+  useEffect(() => {
+    if (!loading && !isAuthenticated) {
+      router.push('/auth/login?returnUrl=/shopping-list');
+    }
+  }, [loading, isAuthenticated, router]);
+  
+  // If still loading auth state or not authenticated, show loading state
+  if (loading || !isAuthenticated) {
+    return (
+      <div className="container mx-auto p-6 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-[#9cb99c] border-r-transparent align-[-0.125em]" role="status">
+            <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">
+              Loading...
+            </span>
+          </div>
+          <p className="mt-2 text-gray-600">Verifying your access...</p>
+        </div>
+      </div>
+    );
+  }
   
   useEffect(() => {
     // Load shopping list from localStorage
@@ -25,63 +59,57 @@ export default function ShoppingList() {
     }
   }, []);
   
-  // Batch process ingredients to avoid rate limiting
+  useEffect(() => {
+    if (items.length > 0) {
+      // Clear existing product data
+      setProductData({});
+      setSelectedProducts({});
+      // Fetch products again with new store filter
+      batchFetchProducts(items);
+    }
+  }, [storeFilter]); // Add storeFilter as dependency
+  
   const batchFetchProducts = async (itemsList) => {
     setFetchStatus('loading');
     
-    // Extract unique ingredients to avoid duplicate requests
     const uniqueIngredients = [...new Set(itemsList.map(item => {
       const { ingredient } = parseItemName(item.name);
       return ingredient;
     }))];
     
-    console.log(`Starting batch fetch for ${uniqueIngredients.length} unique ingredients`);
+    console.log(`Starting fetch for ${uniqueIngredients.length} ingredients`);
     
-    // Process in small batches with delay between batches
-    const batchSize = 3;
-    const delayBetweenBatches = 1500; // 1.5 seconds between batches
-    
-    for (let i = 0; i < uniqueIngredients.length; i += batchSize) {
-      const batch = uniqueIngredients.slice(i, i + batchSize);
-      
-      console.log(`Processing batch ${Math.floor(i/batchSize) + 1}: ${batch.join(', ')}`);
-      
-      // Show loading state for current batch
-      batch.forEach(ingredient => {
+    try {
+      // Create an array of promises for all ingredients
+      const fetchPromises = uniqueIngredients.map(async (ingredient) => {
         setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
-      });
-      
-      // Process each ingredient in the current batch in parallel
-      await Promise.all(batch.map(async (ingredient) => {
+        
         try {
-          // Skip if we already have data for this ingredient
-          if (productData[ingredient]) return;
-          
-          const products = await fetchProductsForIngredient(ingredient);
-          
-          // Update product data
-          setProductData(prev => ({ ...prev, [ingredient]: products }));
-          
-          // Set the cheapest product as selected
-          if (products && products.length > 0) {
-            setSelectedProducts(prev => ({ ...prev, [ingredient]: products[0] }));
+          if (!productData[ingredient]) {
+            const products = await fetchProductsForIngredient(ingredient);
+            
+            setProductData(prev => ({ ...prev, [ingredient]: products }));
+            
+            if (products && products.length > 0) {
+              setSelectedProducts(prev => ({ ...prev, [ingredient]: products[0] }));
+            }
           }
         } catch (error) {
-          console.error(`Error processing ${ingredient}:`, error);
+          console.error(`Failed to fetch products for ${ingredient}:`, error);
         } finally {
           setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
         }
-      }));
+      });
+
+      // Wait for all fetches to complete
+      await Promise.all(fetchPromises);
       
-      // If there are more batches to process, add delay
-      if (i + batchSize < uniqueIngredients.length) {
-        console.log(`Waiting ${delayBetweenBatches}ms before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
-      }
+    } catch (error) {
+      console.error('Error during parallel fetching:', error);
     }
     
     setFetchStatus('complete');
-    console.log('All batches processed');
+    console.log('All ingredients processed');
   };
   
   const removeItem = (index) => {
@@ -98,20 +126,75 @@ export default function ShoppingList() {
     localStorage.setItem('shoppingList', '[]');
   };
 
-  // Buy function to handle checkout process
+  const clearStoreItems = (storeName) => {
+    if (window.confirm(`Are you sure you want to clear all ${storeName} items?`)) {
+      const newItems = items.filter(item => {
+        const { ingredient } = parseItemName(item.name);
+        const product = selectedProducts[ingredient];
+        return product?.store !== storeName;
+      });
+      setItems(newItems);
+      localStorage.setItem('shoppingList', JSON.stringify(newItems));
+    }
+  };
+
+  const buyStoreItems = (storeName) => {
+    if (window.confirm(`Are you sure you want to buy these ${storeName} items?`)) {
+      // Get items from this store
+      const storeItems = items.filter(item => {
+        const { ingredient } = parseItemName(item.name);
+        const product = selectedProducts[ingredient];
+        return product?.store === storeName;
+      });
+
+      // Convert store items to pantry items
+      const pantryItems = storeItems.map(item => {
+        const { quantity, ingredient } = parseItemName(item.name);
+        const selectedProduct = selectedProducts[ingredient];
+        
+        return {
+          ...item,
+          quantity,
+          ingredient,
+          purchaseDate: new Date().toISOString(),
+          productTitle: selectedProduct?.title,
+          productPrice: selectedProduct?.displayPrice,
+          productStore: selectedProduct?.store
+        };
+      });
+
+      // Get existing pantry items
+      const existingPantryItems = JSON.parse(localStorage.getItem('pantryItems') || '[]');
+      
+      // Combine existing and new pantry items
+      const updatedPantryItems = [...existingPantryItems, ...pantryItems];
+      
+      // Save to pantry in localStorage
+      localStorage.setItem('pantryItems', JSON.stringify(updatedPantryItems));
+      
+      // Remove bought items from shopping list
+      const remainingItems = items.filter(item => {
+        const { ingredient } = parseItemName(item.name);
+        const product = selectedProducts[ingredient];
+        return product?.store !== storeName;
+      });
+      
+      setItems(remainingItems);
+      localStorage.setItem('shoppingList', JSON.stringify(remainingItems));
+      
+      alert(`${storeName} items have been moved to your pantry!`);
+    }
+  };
+
   const buyItems = () => {
     if (window.confirm('Are you sure you want to buy these items?')) {
-      // Convert shopping list items to pantry items, including selected product information
       const pantryItems = items.map(item => {
-        // Get the parsed ingredient and quantity if not already available
         const { quantity, ingredient } = item.quantity && item.ingredient 
           ? { quantity: item.quantity, ingredient: item.ingredient } 
           : parseItemName(item.name);
         
-        // Get the selected product for this ingredient if available
         const selectedProduct = selectedProducts[ingredient];
         
-        // Return an enhanced item with product information if available
         return {
           ...item,
           quantity,
@@ -123,58 +206,59 @@ export default function ShoppingList() {
         };
       });
       
-      // Get existing pantry items
       const existingPantryItems = JSON.parse(localStorage.getItem('pantryItems') || '[]');
-      
-      // Combine existing and new pantry items
       const updatedPantryItems = [...existingPantryItems, ...pantryItems];
-      
-      // Save to pantry in localStorage
       localStorage.setItem('pantryItems', JSON.stringify(updatedPantryItems));
       
-      // Clear the shopping list
       clearList();
       
-      // Show confirmation and redirect to pantry
       alert('Items have been moved to your pantry!');
       window.location.href = '/pantry';
     }
   };
 
-  // Select a different product for an ingredient
   const selectProduct = (ingredient, product) => {
     setSelectedProducts(prev => ({ ...prev, [ingredient]: product }));
-    // Close the dropdown after selection
     setOpenDropdowns(prev => ({ ...prev, [ingredient]: false }));
   };
 
-  // Toggle dropdown state for an ingredient
   const toggleDropdown = async (ingredient) => {
-    // If we don't have products yet for this ingredient, fetch them
     if (!productData[ingredient] || productData[ingredient].length === 0) {
       setLoadingProducts(prev => ({ ...prev, [ingredient]: true }));
       const products = await fetchProductsForIngredient(ingredient);
       setProductData(prev => ({ ...prev, [ingredient]: products }));
       
-      // Set the cheapest product as selected if not already set
-      if (products.length > 0 && !selectedProducts[ingredient]) {
-        setSelectedProducts(prev => ({ ...prev, [ingredient]: products[0] }));
+      const filteredProducts = storeFilter === 'all' 
+        ? products 
+        : products.filter(p => p.store === storeFilter);
+      
+      if (filteredProducts.length > 0 && !selectedProducts[ingredient]) {
+        setSelectedProducts(prev => ({ ...prev, [ingredient]: filteredProducts[0] }));
       }
       
       setLoadingProducts(prev => ({ ...prev, [ingredient]: false }));
+    } else {
+      const currentSelection = selectedProducts[ingredient];
+      const availableProducts = productData[ingredient].filter(p => 
+        storeFilter === 'all' || p.store === storeFilter
+      );
+      
+      if (currentSelection && storeFilter !== 'all' && currentSelection.store !== storeFilter) {
+        if (availableProducts.length > 0) {
+          setSelectedProducts(prev => ({ ...prev, [ingredient]: availableProducts[0] }));
+        }
+      }
     }
     
-    // Toggle dropdown state
     setOpenDropdowns(prev => ({ 
       ...prev, 
       [ingredient]: !prev[ingredient] 
     }));
   };
 
-  // Helper function to parse price strings into numbers for sorting
   const parsePriceValue = (priceStr) => {
+    console.log(priceStr)
     if (!priceStr || typeof priceStr !== 'string') return Infinity;
-    // Remove currency symbol and any non-numeric chars except decimal point
     const numericStr = priceStr.replace(/[^0-9.,]/g, '').replace(',', '.');
     const value = parseFloat(numericStr);
     return isNaN(value) ? Infinity : value;
@@ -182,6 +266,8 @@ export default function ShoppingList() {
 
   const fetchProductsForIngredient = async (ingredient) => {
     try {
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const geminiResponse = await fetch('/api/auth/gemini', {
          method: 'POST',
          headers: {
@@ -197,91 +283,107 @@ export default function ShoppingList() {
        const geminiData = await geminiResponse.json();
        const simplifiedQuery = geminiData.result || ingredient;
 
-      // Sanitize the simplified query to remove quotes and keep only the first word if needed
       const cleanedQuery = simplifiedQuery
-        .replace(/['"]/g, '') // Remove quotes
+        .replace(/['"]/g, '')
         .trim();    
 
       console.log(`Fetching products for ${ingredient} using query: ${cleanedQuery}`);
     
-      // Fetch from both Mercator and SPAR APIs
-      const [mercatorResponse, sparResponse] = await Promise.all([
-        fetch(`/api/products-mercator?query=${encodeURIComponent(cleanedQuery)}`),
-        fetch(`/api/products-spar?query=${encodeURIComponent(cleanedQuery)}`)
-      ]);
+      let products = [];
       
-      // Process Mercator data
-      let mercatorProducts = [];
-      if (mercatorResponse.ok) {
-        const mercatorData = await mercatorResponse.json();
-        if (mercatorData && Array.isArray(mercatorData)) {
-          mercatorProducts = mercatorData;
-        } else if (mercatorData && mercatorData.products && Array.isArray(mercatorData.products)) {
-          mercatorProducts = mercatorData.products;
-        } else if (mercatorData) {
-          mercatorProducts = [mercatorData];
-        }
-        
-        // Simplify Mercator products
-        mercatorProducts = mercatorProducts.map(product => {
-          // Parse price string to float
-          const priceString = product.data?.current_price || 'N/A';
-          const priceValue = priceString !== 'N/A' ? parsePriceValue(priceString) : Infinity;
+      if (storeFilter === 'Mercator' || storeFilter === 'all') {
+        const mercatorResponse = await fetch(`/api/products-mercator?query=${encodeURIComponent(cleanedQuery)}`);
+        if (mercatorResponse.ok) {
+          const mercatorData = await mercatorResponse.json();
+          let mercatorProducts = [];
           
-          return {
+          if (Array.isArray(mercatorData)) {
+            mercatorProducts = mercatorData;
+          } else if (mercatorData?.products && Array.isArray(mercatorData.products)) {
+            mercatorProducts = mercatorData.products;
+          } else if (mercatorData) {
+            mercatorProducts = [mercatorData];
+          }
+          
+          mercatorProducts = mercatorProducts.map(product => ({
             title: product.data?.name || 'Unknown Product',
-            price: priceValue, // Store as float
-            displayPrice: priceString, // Keep original for display
+            price: parsePriceValue(product.data?.current_price || 'N/A'),
+            displayPrice: product.data?.current_price || 'N/A',
             image: product.mainImageSrc || '',
             store: 'Mercator'
-          };
-        });
-      }
-      
-      // Process SPAR data
-      let sparProducts = [];
-      if (sparResponse.ok) {
-        const sparData = await sparResponse.json();
-        // SPAR API returns data in a different format - handle it appropriately
-        if (sparData && sparData.hits && Array.isArray(sparData.hits)) {
-          sparProducts = sparData.hits.map(hit => {
-            // Ensure price is a float
-            const priceValue = typeof hit.masterValues?.price === 'number' 
-              ? hit.masterValues.price 
-              : parsePriceValue(hit.masterValues?.price || 'N/A');
-            
-            return {
-              title: hit.masterValues?.title || 'Unknown Product',
-              price: priceValue, // Store as float
-              displayPrice: hit.masterValues?.price || 'N/A', // Keep original for display
-              image: hit.masterValues?.['image-url'] || '',
-              store: 'SPAR'
-            };
-          });
+          }));
+          
+          products = [...products, ...mercatorProducts];
         }
       }
       
-      // Combine all products
-      const allProducts = [...mercatorProducts, ...sparProducts];
+      if (storeFilter === 'SPAR' || storeFilter === 'all') {
+        const sparResponse = await fetch(`/api/products-spar?query=${encodeURIComponent(cleanedQuery)}`);
+        if (sparResponse.ok) {
+          const sparData = await sparResponse.json();
+          if (sparData?.hits && Array.isArray(sparData.hits)) {
+            const sparProducts = sparData.hits.map(hit => 
+              (
+              {
+              title: hit.masterValues?.title || 'Unknown Product',
+              price: parsePriceValue(hit.masterValues?.price || 'N/A'),
+              displayPrice: hit.masterValues?.price || 'N/A',
+              image: hit.masterValues?.['image-url'] || '',
+              store: 'SPAR'
+            }));
+            products = [...products, ...sparProducts];
+          }
+        }
+      }
       
-      // Sort products by price from cheapest to most expensive
-      const sortedProducts = allProducts.sort((a, b) => a.price - b.price);
+      if (products.length > 0) {
+        const filterPrompt = {
+          ingredient: ingredient,
+          products: products.map(p => ({
+            title: p.title,
+            store: p.store,
+            price: p.displayPrice
+          }))
+        };
+
+        const geminiFilterResponse = await fetch('/api/auth/gemini-filter', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(filterPrompt),
+        });
+
+        if (!geminiFilterResponse.ok) {
+          throw new Error(`Failed to filter with Gemini: ${geminiFilterResponse.status}`);
+        }
+
+        const geminiFilterData = await geminiFilterResponse.json();
+        
+        if (Array.isArray(geminiFilterData.relevantIndices)) {
+          products = products.filter((_, index) => 
+            geminiFilterData.relevantIndices.includes(index)
+          );
+        }
+      }
+
+      return products.sort((a, b) => {
+  const priceA = a.store === 'SPAR' ? (a.displayPrice) : a.price;
+  const priceB = b.store === 'SPAR' ? (b.displayPrice) : b.price;
+  return priceA - priceB;
+});
       
-      return sortedProducts;
     } catch (error) {
-      console.error(`Error fetching products for ${ingredient}:`, error);
+      console.error(`Error fetching/filtering products for ${ingredient}:`, error);
       return [];
     }
   };
 
-  // Enhanced helper function to separate quantity and ingredient
   const parseItemName = (name) => {
     if (!name) return { quantity: "", ingredient: "" };
     
-    // Trim and normalize the input
     const trimmedName = name.trim();
     
-    // Common cooking units - this helps identify where quantity ends
     const units = [
       'cup', 'cups', 'tablespoon', 'tablespoons', 'tbsp', 
       'teaspoon', 'teaspoons', 'tsp', 'oz', 'ounce', 'ounces',
@@ -292,14 +394,11 @@ export default function ShoppingList() {
       'can', 'cans', 'bottle', 'bottles', 'clove', 'cloves'
     ];
     
-    // Regex for matching numbers (including fractions and unicode fractions)
     const numberPattern = /^([\d.,½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]+(?:\/[\d.,]+)?(?:\s*-\s*[\d.,½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]+)?)/i;
     
-    // First check if we have a number at the beginning
     const numberMatch = trimmedName.match(numberPattern);
     
     if (!numberMatch) {
-      // No number found, return the whole string as ingredient
       const sanitizedName = trimmedName;
       return {
         quantity: "",
@@ -307,22 +406,18 @@ export default function ShoppingList() {
       };
     }
     
-    // We have a number, extract it
     const numberPart = numberMatch[0];
     let remainingText = trimmedName.substring(numberPart.length).trim();
     
-    // Check if the next word is a unit
     const nextWordMatch = remainingText.match(/^(\S+)/);
     
     if (nextWordMatch) {
-      const nextWord = nextWordMatch[0].toLowerCase().replace(/[,.;:]$/, ''); // Remove trailing punctuation
+      const nextWord = nextWordMatch[0].toLowerCase().replace(/[,.;:]$/, '');
       
       if (units.includes(nextWord)) {
-        // This is a known unit, include it in the quantity
         const unitPart = nextWordMatch[0];
         const quantityWithUnit = `${numberPart} ${unitPart}`;
         
-        // Everything after the unit is the ingredient
         const ingredientPart = remainingText.substring(unitPart.length).trim();
         
         if (ingredientPart) {
@@ -334,17 +429,75 @@ export default function ShoppingList() {
       }
     }
     
-    // If we reach here, we have a number but couldn't identify a unit
-    // Let's just use the number as quantity and the rest as ingredient
     return {
       quantity: numberPart,
       ingredient: remainingText.charAt(0).toUpperCase() + remainingText.slice(1)
     };
   };
 
+  const calculateStoreTotal = (storeName) => {
+    return items.reduce((total, item) => {
+      const { ingredient } = parseItemName(item.name);
+      const selectedProduct = selectedProducts[ingredient];
+      if (selectedProduct?.store === storeName) {
+        if (storeName === 'SPAR') {
+          return total + selectedProduct.displayPrice;
+        } else if (storeName === 'Mercator') {
+          return total + (selectedProduct.price || 0);
+        }
+      }
+      return total;
+    }, 0);
+  };
+
+  const calculateTotal = () => {
+    return items.reduce((total, item) => {
+      const { ingredient } = parseItemName(item.name);
+      const selectedProduct = selectedProducts[ingredient];
+      if (selectedProduct) {
+        if (selectedProduct.store === 'SPAR') {
+          return total + selectedProduct.displayPrice;
+        } else if (selectedProduct.store === 'Mercator') {
+          return total + (selectedProduct.price || 0);
+        }
+      }
+      return total;
+    }, 0);
+  };
+
   return (
     <div className="container mx-auto p-6">
       <h1 className="text-2xl font-bold mb-6">Shopping List</h1>
+      
+      <div className="mb-6 flex flex-col gap-4">
+        <div className="flex items-center gap-4 bg-white p-4 rounded-lg shadow-md">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Sort by:</label>
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="border rounded-md px-2 py-1 text-sm"
+            >
+              <option value="name">Name</option>
+              <option value="price">Price</option>
+              <option value="store">Store</option>
+            </select>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium">Store:</label>
+            <select 
+              value={storeFilter}
+              onChange={(e) => setStoreFilter(e.target.value)}
+              className="border rounded-md px-2 py-1 text-sm"
+            >
+              <option value="all">All Stores</option>
+              <option value="Mercator">Mercator</option>
+              <option value="SPAR">SPAR</option>
+            </select>
+          </div>
+        </div>
+      </div>
       
       {items.length === 0 ? (
         <div className="text-center my-8 text-gray-500">
@@ -352,180 +505,343 @@ export default function ShoppingList() {
         </div>
       ) : (
         <>
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex gap-3">
-              <button 
-                onClick={clearList}
-                className="bg-red-500 hover:bg-red-600 text-white py-1 px-3 rounded-md text-sm"
-              >
-                Clear List
-              </button>
-              <button
-                onClick={buyItems}
-                className="bg-[#9cb99c] hover:bg-[#8aa98a] text-white py-1 px-3 rounded-md text-sm"
-              >
-                Buy
-              </button>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div className="bg-gray-50 p-3 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Image
+                      src={Mercator}
+                      alt="Mercator"
+                      width={24}
+                      height={24}
+                      className="object-contain mr-2"
+                    />
+                    <h3 className="font-medium">Mercator Items</h3>
+                    <span className="ml-2 text-sm text-gray-500">
+                      {items
+                        .filter(item => {
+                          const { ingredient } = parseItemName(item.name);
+                          const product = selectedProducts[ingredient];
+                          return product?.store === 'Mercator';
+                        }).length} items
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => clearStoreItems('Mercator')}
+                      className="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => buyStoreItems('Mercator')}
+                      className="bg-[#9cb99c] hover:bg-[#8aa98a] text-white py-1 px-2 rounded-md text-sm"
+                    >
+                      Buy
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <ul className="divide-y divide-[#e8e3d9]">
+                {renderStoreItems('Mercator')}
+              </ul>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-md overflow-hidden">
+              <div className="bg-gray-50 p-3 border-b border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Image
+                      src={Spar}
+                      alt="SPAR"
+                      width={24}
+                      height={24}
+                      className="object-contain mr-2"
+                    />
+                    <h3 className="font-medium">SPAR Items</h3>
+                    <span className="ml-2 text-sm text-gray-500">
+                      {items
+                        .filter(item => {
+                          const { ingredient } = parseItemName(item.name);
+                          const product = selectedProducts[ingredient];
+                          return product?.store === 'SPAR';
+                        }).length} items
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => clearStoreItems('SPAR')}
+                      className="bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded-md text-sm"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={() => buyStoreItems('SPAR')}
+                      className="bg-[#9cb99c] hover:bg-[#8aa98a] text-white py-1 px-2 rounded-md text-sm"
+                    >
+                      Buy
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <ul className="divide-y divide-[#e8e3d9]">
+                {renderStoreItems('SPAR')}
+              </ul>
             </div>
             
-            {fetchStatus === 'loading' && (
-              <span className="text-sm text-blue-600">
-                Loading product data...
-              </span>
+            {storeFilter === 'all' && items.filter(item => {
+              const { ingredient } = parseItemName(item.name);
+              const product = selectedProducts[ingredient];
+              return !product?.store;
+            }).length > 0 && (
+              <div className="md:col-span-2 bg-white rounded-lg shadow-md overflow-hidden mt-4">
+                <div className="bg-gray-50 p-3 border-b border-gray-200">
+                  <h3 className="font-medium">Items Without Assigned Store</h3>
+                  <span className="text-sm text-gray-500">
+                    {items
+                      .filter(item => {
+                        const { ingredient } = parseItemName(item.name);
+                        const product = selectedProducts[ingredient];
+                        return !product?.store;
+                      }).length} items
+                  </span>
+                </div>
+                <ul className="divide-y divide-[#e8e3d9]">
+                  {renderStoreItems('unassigned')}
+                </ul>
+              </div>
             )}
           </div>
           
-          <div className="bg-white rounded-lg shadow-md overflow-hidden">
-            <ul className="divide-y divide-[#e8e3d9]">
-              {items.map((item, index) => {
-                // Use the separate quantity and ingredient if they exist, otherwise parse from name
-                const { quantity, ingredient } = item.quantity && item.ingredient 
-                  ? { quantity: item.quantity, ingredient: item.ingredient } 
-                  : parseItemName(item.name);
-                
-                // Get the selected product for this ingredient
-                const selectedProduct = selectedProducts[ingredient];
-                // Check if dropdown is open
-                const isDropdownOpen = openDropdowns[ingredient];
-                // Get products for this ingredient
-                const products = productData[ingredient] || [];
-                
-                return (
-                  <li key={index} className="p-4 flex flex-col">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 flex">
-                        {/* Quantity in its own element with distinct styling */}
-                        {quantity && (
-                          <div className="w-20 min-w-20 font-medium text-gray-700 mr-2 bg-gray-50 rounded px-2 py-1 flex items-center justify-center">
-                            {quantity}
-                          </div>
-                        )}
-                        
-                        {/* Ingredient name in separate element */}
-                        <div className="flex-1">
-                          <p className="text-gray-800">{ingredient}</p>
-                          {item.recipeName && (
-                            <p className="text-xs text-gray-500">
-                              From: <Link href={`/recipe/${item.recipeId}`} className="text-[#9cb99c] hover:underline">
-                                {item.recipeName}
-                              </Link>
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <button 
-                          onClick={() => removeItem(index)}
-                          className="text-gray-500 hover:text-red-500 ml-2"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    
-                    {/* Product selection dropdown */}
-                    <div className="mt-2 relative">
-                      <div 
-                        className="flex items-center bg-green-50 p-2 rounded-md cursor-pointer border hover:border-blue-300"
-                        onClick={() => toggleDropdown(ingredient)}
-                      >
-                        {selectedProduct ? (
-                          <>
-                            {selectedProduct.image && (
-                              <img src={selectedProduct.image} alt={selectedProduct.title} className="w-10 h-10 object-cover mr-2" />
-                            )}
-                            <div className="flex-1">
-                              <p className="text-sm font-medium">{selectedProduct.title}</p>
-                            </div>
-                            <div className="flex items-center">
-                              <span className="font-bold text-green-700 mr-3">{selectedProduct.displayPrice} €</span>
-                              <div className="w-6 h-6 flex items-center justify-center">
-                                <Image
-                                  src={selectedProduct.store === 'SPAR' ? Spar : Mercator}
-                                  alt={selectedProduct.store}
-                                  width={24}
-                                  height={24}
-                                  className="object-contain"
-                                />
-                              </div>
-                              <svg 
-                                className={`w-4 h-4 ml-3 transition-transform ${isDropdownOpen ? 'transform rotate-180' : ''}`} 
-                                fill="none" 
-                                viewBox="0 0 24 24" 
-                                stroke="currentColor"
-                              >
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
-                              </svg>
-                            </div>
-                          </>
-                        ) : loadingProducts[ingredient] ? (
-                          <div className="flex-1 text-sm text-gray-500 italic">
-                            Finding best prices...
-                          </div>
-                        ) : (
-                          <div className="flex-1 text-sm text-gray-500">
-                            Click to select a product
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Dropdown content */}
-                      {isDropdownOpen && (
-                        <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
-                          {loadingProducts[ingredient] ? (
-                            <div className="p-3 text-sm text-gray-500">Loading products...</div>
-                          ) : products.length > 0 ? (
-                            <ul className="py-1">
-                              {products.map((product, i) => (
-                                <li 
-                                  key={i} 
-                                  className={`flex items-center p-2 hover:bg-gray-50 cursor-pointer ${selectedProduct === product ? 'bg-green-50' : ''}`}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    selectProduct(ingredient, product);
-                                  }}
-                                >
-                                  {product.image && (
-                                    <img src={product.image} alt={product.title || 'Product'} className="w-10 h-10 object-cover mr-2" />
-                                  )}
-                                  <div className="flex-1">
-                                    <p className="font-medium text-sm">{product.title || 'Unknown product'}</p>
-                                    {product.displayPrice && <p className="text-sm">{product.displayPrice} €</p>}
-                                  </div>
-                                  <Image
-                                    src={product.store === 'SPAR' ? Spar : Mercator}
-                                    alt={product.store}
-                                    width={24}
-                                    height={24}
-                                    className="object-contain ml-2"
-                                  />
-                                  
-                                  {selectedProduct === product && (
-                                    <span className="ml-2 text-green-600">
-                                      <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                      </svg>
-                                    </span>
-                                  )}
-                                </li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <div className="p-3 text-sm text-gray-500">No products found for this ingredient.</div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
+          <div className="mt-6 space-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-white p-4 rounded-lg shadow-md">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Image
+                      src={Mercator}
+                      alt="Mercator"
+                      width={24}
+                      height={24}
+                      className="object-contain mr-2"
+                    />
+                    <span className="font-medium">Mercator Total:</span>
+                  </div>
+                  <span className="text-lg font-bold text-green-700">
+                    {calculateStoreTotal('Mercator').toFixed(2)} €
+                  </span>
+                </div>
+              </div>
+              
+              <div className="bg-white p-4 rounded-lg shadow-md">
+                <div className="flex justify-between items-center">
+                  <div className="flex items-center">
+                    <Image
+                      src={Spar}
+                      alt="SPAR"
+                      width={24}
+                      height={24}
+                      className="object-contain mr-2"
+                    />
+                    <span className="font-medium">SPAR Total:</span>
+                  </div>
+                  <span className="text-lg font-bold text-green-700">
+                    {calculateStoreTotal('SPAR').toFixed(2)} €
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white p-4 rounded-lg shadow-md">
+              <div className="flex justify-between items-center">
+                <span className="font-medium">Total for all stores:</span>
+                <span className="text-xl font-bold text-green-700">
+                  {calculateTotal().toFixed(2)} €
+                </span>
+              </div>
+            </div>
           </div>
         </>
       )}
     </div>
   );
+
+function renderStoreItems(store) {
+  const filteredItems = items
+    .slice()
+    .sort((a, b) => {
+      const { ingredient: ingA } = parseItemName(a.name);
+      const { ingredient: ingB } = parseItemName(b.name);
+      const prodA = selectedProducts[ingA];
+      const prodB = selectedProducts[ingB];
+      
+      switch(sortBy) {
+        case 'price':
+          const priceA = prodA?.store === 'SPAR' ? (prodA.displayPrice) : (prodA?.price || 0);
+          const priceB = prodB?.store === 'SPAR' ? (prodB.displayPrice) : (prodB?.price || 0);
+          return priceA - priceB;
+        case 'store':
+          return (prodA?.store || '').localeCompare(prodB?.store || '');
+        case 'name':
+        default:
+          return ingA.localeCompare(ingB);
+      }
+    })
+      .filter(item => {
+        const { ingredient } = parseItemName(item.name);
+        const product = selectedProducts[ingredient];
+        
+        if (store === 'unassigned') {
+          return !product?.store;
+        }
+        
+        return product?.store === store;
+      });
+
+    if (filteredItems.length === 0) {
+      return (
+        <li className="p-4 text-center text-gray-500 italic">
+          No items in this store
+        </li>
+      );
+    }
+
+    return filteredItems.map((item, index) => {
+      const { quantity, ingredient } = item.quantity && item.ingredient 
+        ? { quantity: item.quantity, ingredient: item.ingredient } 
+        : parseItemName(item.name);
+      
+      const selectedProduct = selectedProducts[ingredient];
+      const isDropdownOpen = openDropdowns[ingredient];
+      const products = productData[ingredient] || [];
+      const filteredProducts = storeFilter === 'all' 
+        ? products 
+        : products.filter(p => p.store === storeFilter);
+      
+      return (
+        <li key={index} className="p-4 flex flex-col">
+          <div className="flex items-center justify-between">
+            <div className="flex-1 flex">
+              {quantity && (
+                <div className="w-20 min-w-20 font-medium text-gray-700 mr-2 bg-gray-50 rounded px-2 py-1 flex items-center justify-center">
+                  {quantity}
+                </div>
+              )}
+              
+              <div className="flex-1">
+                <p className="text-gray-800">{ingredient}</p>
+                {item.recipeName && (
+                  <p className="text-xs text-gray-500">
+                    From: <Link href={`/recipe/${item.recipeId}`} className="text-[#9cb99c] hover:underline">
+                      {item.recipeName}
+                    </Link>
+                  </p>
+                )}
+              </div>
+            </div>
+            
+            <div className="flex items-center">
+              <button 
+                onClick={() => removeItem(index)}
+                className="text-gray-500 hover:text-red-500 ml-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          
+          <div className="mt-2 relative">
+            <div 
+              className="flex items-center justify-between bg-green-50 p-2 rounded-md cursor-pointer border hover:border-blue-300"
+              onClick={() => toggleDropdown(ingredient)}
+            >
+              {loadingProducts[ingredient] ? (
+                <div className="flex items-center justify-center w-full py-2">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-solid border-[#9cb99c] border-r-transparent"></div>
+                  <span className="ml-2 text-sm text-gray-600">Loading products...</span>
+                </div>
+              ) : selectedProduct ? (
+                <>
+                  <div className="flex items-center">
+                    {selectedProduct.image && (
+                      <div className="w-10 h-10 mr-2 flex-shrink-0">
+                        <Image 
+                          src={selectedProduct.image} 
+                          alt={selectedProduct.title}
+                          width={40} 
+                          height={40}
+                          className="object-contain w-full h-full"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = "/placeholder.png";
+                          }}
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <p className="text-sm font-medium truncate">{selectedProduct.title}</p>
+                      <p className="text-sm text-gray-600">{selectedProduct.store}</p>
+                    </div>
+                  </div>
+                  <div className="ml-2 text-sm font-medium">{selectedProduct.displayPrice} €</div>
+                </>
+              ) : (
+                <div className="text-sm text-gray-500 w-full text-center">No product selected</div>
+              )}
+            </div>
+            
+            {isDropdownOpen && (
+              <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-md shadow-lg max-h-80 overflow-y-auto">
+                {filteredProducts.length === 0 ? (
+                  <div className="p-3 text-center text-sm text-gray-500">
+                    No products available
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-gray-200">
+                    {filteredProducts.map((product, idx) => (
+                      <li 
+                        key={idx}
+                        onClick={() => selectProduct(ingredient, product)}
+                        className={`p-2 hover:bg-gray-50 cursor-pointer ${
+                          selectedProduct?.title === product.title ? 'bg-green-50' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center">
+                            {product.image && (
+                              <div className="w-10 h-10 mr-2 flex-shrink-0">
+                                <Image 
+                                  src={product.image}
+                                  alt={product.title}
+                                  width={40}
+                                  height={40}
+                                  className="object-contain w-full h-full"
+                                  onError={(e) => {
+                                    e.target.onerror = null;
+                                    e.target.src = "/placeholder.png";
+                                  }}
+                                />
+                              </div>
+                            )}
+                            <div className="flex-1">
+                              <p className="text-sm font-medium truncate">{product.title}</p>
+                              <p className="text-xs text-gray-500">{product.store}</p>
+                            </div>
+                          </div>
+                          <div className="ml-2 text-sm font-medium">{product.displayPrice} €</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        </li>
+      );
+    });
+  }
 }

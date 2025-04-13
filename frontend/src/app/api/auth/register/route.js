@@ -1,26 +1,52 @@
-// Mock implementation of the registration API endpoint
-// In a real application, this would store user data in a database
+// API endpoint for user registration
 
 export async function POST(request) {
   try {
-    const { name, email, password } = await request.json();
+    const userData = await request.json();
+
+    console.log("User data received:", userData);
 
     // Simple validation
-    if (!name || !email || !password) {
+    if (!userData.username || !userData.email || !userData.password_hash) {
       return Response.json(
         { message: "Name, email, and password are required" },
         { status: 400 }
       );
     }
 
-    // In a real app, check if user already exists and hash the password
-    // This is just a mock implementation
-    
-    // Mock successful registration
+    // Format the data for the backend
+    const backendData = {
+      username: userData.username,
+      email: userData.email,
+      password_hash: userData.password_hash // Changed to match backend expectation
+    };
+
+    // Make request to your actual backend API
+    const backendResponse = await fetch(`${process.env.BACKEND_API_URL}/users/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(backendData),
+    });
+
+    console.log("Backend response:", backendResponse);
+
+    const responseData = await backendResponse.json();
+
+    if (!backendResponse.ok) {
+      // Return error from backend
+      return Response.json(
+        { message: responseData.message || "Registration failed" },
+        { status: backendResponse.status }
+      );
+    }
+
+    // Return successful response with user data
     return Response.json(
       { 
         message: "User registered successfully",
-        user: { name, email, id: Math.random().toString(36).substring(2, 9) }
+        user: responseData.user
       },
       { status: 201 }
     );

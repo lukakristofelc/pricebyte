@@ -31,6 +31,8 @@ export function middleware(request) {
 // Configure which paths this middleware applies to
 export const config = {
   matcher: [
+    // Apply to root path
+    '/',
     // Apply to routes requiring auth check (can add more as needed)
     '/dashboard/:path*',
     '/recipes/:path*', 

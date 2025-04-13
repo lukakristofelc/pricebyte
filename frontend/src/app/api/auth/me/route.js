@@ -1,11 +1,10 @@
-// API route to get the current authenticated user's information
-// In a real app, this would verify the JWT token and return user data from the database
+// API endpoint to get the current authenticated user's information
 
 export async function GET(request) {
   try {
     // Get the token from cookies
     const token = request.cookies.get('token')?.value;
-
+    console.log("Token:", token);
     // If no token exists, user is not authenticated
     if (!token) {
       return Response.json(
@@ -14,18 +13,26 @@ export async function GET(request) {
       );
     }
 
-    // In a real app, you would verify the JWT token and fetch user data
-    // This is a mock implementation that assumes the token is valid
-    
-    // Mock user data - in a real app, this would come from database lookup
-    // after verifying the token
-    const user = {
-      id: "1",
-      name: "Test User",
-      email: "user@example.com",
-    };
+    // Make request to your backend API to validate token and get user info
+    const backendResponse = await fetch(`${process.env.BACKEND_API_URL}/auth/me`, {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+    });
 
-    return Response.json(user, { status: 200 });
+    if (!backendResponse.ok) {
+      // Token is invalid or user doesn't exist
+      return Response.json(
+        { message: "Invalid authentication" },
+        { status: 401 }
+      );
+    }
+
+    // Return the user data from backend
+    const userData = await backendResponse.json();
+    return Response.json(userData, { status: 200 });
   } catch (error) {
     console.error("Authentication check error:", error);
     return Response.json(

@@ -13,12 +13,19 @@ export async function POST(request) {
       );
     }
 
+        const apiKeys = [
+        'AIzaSyDpPlDMYoJnBuhmOLHeRpFAfVI2m1v62Hs',
+        'AIzaSyD5WR4RoIY7ZtcoCwtcq7BWwYL0p4FJMeo',
+    ];
+    const apiKey = apiKeys[Math.floor(Date.now() / 1000) % apiKeys.length];
+
+
     // Prepare the prompt for Gemini
-    const prompt = `Transform the following detailed ingredient description into a simplified, broad Slovenian search query. Remove brand names, adjectives, and any extra descriptors so that only the essential product name remains. For instance, 'Shredded low-moisture mozzarella cheese' should become 'mozzarella' in Slovenian. Return only the simplified product name in Slovenian: ${input}`;
+    const prompt = `Transform the following detailed ingredient description into a simplified, broad Slovenian search query. Remove brand names, adjectives, and any extra descriptors so that only the essential product name remains. For instance, 'Shredded low-moisture mozzarella cheese' should become 'mozzarella' in Slovenian. Return only the simplified product name in Slovenia, if there is multiple items choose one: ${input}`;
     
     // Call the Gemini API
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyDpPlDMYoJnBuhmOLHeRpFAfVI2m1v62Hs",
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
       {
         method: 'POST',
         headers: {

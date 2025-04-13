@@ -1,6 +1,6 @@
-// Mock implementation of the login API endpoint
-// In a real application, this would validate credentials against a database
-// and generate a proper JWT token
+import SHA256 from 'crypto-js/sha256';
+
+// API endpoint for user login
 
 export async function POST(request) {
   try {
@@ -14,44 +14,47 @@ export async function POST(request) {
       );
     }
 
-    // Mock authentication - in a real app, validate against database
-    // and use a proper authentication system
-    if (email === "user@example.com" && password === "password") {
-      // Create a sample user object
-      const user = {
-        id: "1",
-        name: "Test User",
-        email: "user@example.com",
-      };
+    // Hash the password
+    const password_hash = SHA256(password).toString();
 
-      // In a real app, generate a proper JWT token
-      const token = "mock-jwt-token";
+    // Make request to your actual backend API
+    const backendResponse = await fetch(`${process.env.BACKEND_API_URL}/users/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email, password_hash }), // Send hashed password
+    });
 
-      // Set the token as an HTTP-only cookie for security
-      const response = Response.json(
-        { user, message: "Login successful" },
-        { status: 200 }
+    const responseData = await backendResponse.json();
+
+    console.log("Backend response:", responseData);
+
+    if (!backendResponse.ok) {
+      // Return error from backend
+      return Response.json(
+        { message: responseData.message || "Login failed" },
+        { status: backendResponse.status }
       );
-
-      response.cookies.set({
-        name: "token",
-        value: token,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-        path: "/",
-        // Expire in 7 days
-        maxAge: 60 * 60 * 24 * 7,
-      });
-
-      return response;
     }
 
-    // If credentials don't match
-    return Response.json(
-      { message: "Invalid email or password" },
-      { status: 401 }
+    // Create response with cookies and JSON body
+    // Extend token lifespan to 7 days (604800 seconds) to keep users logged in longer
+    const response = new Response(
+      JSON.stringify({ 
+        success: responseData.success,
+        message: "Login successful" 
+      }),
+      { 
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Set-Cookie': `token=${responseData.token}; HttpOnly; Secure=${process.env.NODE_ENV === "production"}; SameSite=Strict; Path=/; Max-Age=${604800}`
+        }
+      }
     );
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return Response.json(

@@ -3,7 +3,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 
-// Create the auth context
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
@@ -11,32 +10,13 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  // Function to verify JWT and get user data
-  const checkAuthStatus = async () => {
-    try {
-      const res = await fetch("/api/auth/me", {
-        method: "GET",
-        credentials: "include",
-      });
-
-      if (res.ok) {
-        const userData = await res.json();
-        setUser(userData);
-      } else {
-        // Clear user if not authenticated
-        setUser(null);
-      }
-    } catch (error) {
-      console.error("Authentication check failed:", error);
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Check auth status on initial load
+  // Check for stored user data on initial load
   useEffect(() => {
-    checkAuthStatus();
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+    setLoading(false);
   }, []);
 
   // Login function
@@ -58,6 +38,8 @@ export function AuthProvider({ children }) {
       }
 
       const userData = await res.json();
+      // Store user data in localStorage
+      localStorage.setItem('user', JSON.stringify(userData));
       setUser(userData);
       return { success: true };
     } catch (error) {
@@ -106,6 +88,8 @@ export function AuthProvider({ children }) {
         throw new Error(error.message || "Logout failed");
       }
 
+      // Remove user data from localStorage
+      localStorage.removeItem('user');
       setUser(null);
       router.push("/auth/login");
       return { success: true };
@@ -133,7 +117,6 @@ export function AuthProvider({ children }) {
   );
 }
 
-// Custom hook to use the auth context
 export function useAuth() {
   const context = useContext(AuthContext);
   if (context === undefined) {

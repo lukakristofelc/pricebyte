@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { useAuth } from '../../context/AuthContext';
+import SHA256 from 'crypto-js/sha256';
 
 export default function Register() {
   const [formData, setFormData] = useState({
-    name: '',
+    username: '', // Changed from 'name' to 'username'
     email: '',
     password: '',
     confirmPassword: '',
@@ -39,14 +40,18 @@ export default function Register() {
     }
 
     try {
+      const hashedPassword = SHA256(formData.password).toString();
+      
       const userData = {
-        name: formData.name,
+        username: formData.username, // Changed from formData.name
         email: formData.email,
-        password: formData.password,
+        password_hash: hashedPassword // Send hashed password to match backend expectation
       };
 
       const result = await register(userData);
       
+      console.log(result);
+
       if (!result.success) {
         throw new Error(result.error || 'Registration failed');
       }
@@ -95,16 +100,16 @@ export default function Register() {
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4 rounded-md shadow-sm">
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                 Full Name
               </label>
               <input
-                id="name"
-                name="name"
+                id="username"  // Changed from 'name'
+                name="username"  // Changed from 'name'
                 type="text"
-                autoComplete="name"
+                autoComplete="username"
                 required
-                value={formData.name}
+                value={formData.username}  // Changed from formData.name
                 onChange={handleChange}
                 className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-gray-900 placeholder-gray-500 focus:border-[#9cb99c] focus:outline-none focus:ring-[#9cb99c] sm:text-sm"
                 placeholder="John Doe"
