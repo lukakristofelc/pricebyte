@@ -22,7 +22,7 @@ Once you have identified the relevant products, output only the indices (using z
     `;
 
     const response = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=AIzaSyD5WR4RoIY7ZtcoCwtcq7BWwYL0p4FJMeo",
       {
         method: 'POST',
         headers: {
