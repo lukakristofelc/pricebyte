@@ -8,6 +8,9 @@ import {UserModule} from "./modules/user/user.module";
 import {Recipe} from "./entities/recipe.entity";
 import {ShopModule} from "./modules/shop/shop.module";
 import {RecipeModule} from "./modules/recipe/recipe.module";
+import {Allergy} from "./entities/allergy-entity";
+import {UserAllergies} from "./entities/user-allergies.entity";
+import {AllergyModule} from "./modules/allergies/allergy.module";
 
 //TODO: MOVE TO ENV
 @Module({
@@ -17,7 +20,7 @@ import {RecipeModule} from "./modules/recipe/recipe.module";
       host: 'pricebyte-pricebyte.b.aivencloud.com',
       port: 23424,
       user: 'avnadmin',
-      entities: [User, RecipeDetail, Shop, Recipe],
+      entities: [User, RecipeDetail, Shop, Recipe, Allergy, UserAllergies],
       debug: true,
       allowGlobalContext: true,
       driverOptions: {
@@ -25,7 +28,8 @@ import {RecipeModule} from "./modules/recipe/recipe.module";
           ssl: { rejectUnauthorized: false }
         }
       },
-    })), UserModule, ShopModule, RecipeModule
+    })), UserModule, ShopModule, RecipeModule, AllergyModule
+
   ],
 })
 export class AppModule {}
