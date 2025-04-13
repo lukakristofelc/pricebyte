@@ -78,16 +78,6 @@ export function AuthProvider({ children }) {
   const logout = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/auth/logout", {
-        method: "POST",
-        credentials: "include",
-      });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Logout failed");
-      }
-
       // Remove user data from localStorage
       localStorage.removeItem('user');
       setUser(null);

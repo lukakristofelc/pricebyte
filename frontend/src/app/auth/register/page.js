@@ -7,7 +7,7 @@ import Image from 'next/image';
 import { useAuth } from '../../context/AuthContext';
 import SHA256 from 'crypto-js/sha256';
 
-export default function Register() {
+export default function Register({ onSwitchToLogin }) {
   const [formData, setFormData] = useState({
     username: '', // Changed from 'name' to 'username'
     email: '',
@@ -81,12 +81,6 @@ export default function Register() {
             </div>
           </Link>
           <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900">Create your account</h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Already have an account?{' '}
-            <Link href="/auth/login" className="font-medium text-[#9cb99c] hover:text-[#7d9e7d]">
-              Sign in
-            </Link>
-          </p>
         </div>
 
         {error && (
@@ -175,6 +169,18 @@ export default function Register() {
             </button>
           </div>
         </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            Already have an account?{" "}
+            <button 
+              onClick={onSwitchToLogin} 
+              className="text-[#9cb99c] hover:text-[#7d9e7d] font-medium"
+            >
+              Sign in
+            </button>
+          </p>
+        </div>
       </div>
     </div>
   );

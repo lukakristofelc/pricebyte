@@ -1,11 +1,13 @@
 "use client";
 
 import { Geist, Geist_Mono } from "next/font/google";
+import { useState } from "react"; // Add this import
 import "./globals.css";
 import Navbar from "../components/Navbar";
 import Sidebar from "../components/Sidebar";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Login from "./auth/login/page";
+import Register from "./auth/register/page"; // Add this import
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -20,6 +22,7 @@ const geistMono = Geist_Mono({
 // Client component for the authenticated layout
 function AuthenticatedLayout({ children }) {
   const { isAuthenticated, loading } = useAuth();
+  const [showRegister, setShowRegister] = useState(false); // Add this state
 
   console.log("AuthenticatedLayout: ", { isAuthenticated, loading });
 
@@ -47,10 +50,14 @@ function AuthenticatedLayout({ children }) {
     );
   }
 
-  // If not authenticated, show login page instead of the requested content
+  // If not authenticated, show login or register page
   return (
     <div className="h-screen">
-      <Login />
+      {showRegister ? (
+        <Register onSwitchToLogin={() => setShowRegister(false)} />
+      ) : (
+        <Login onCreateAccount={() => setShowRegister(true)} />
+      )}
     </div>
   );
 }
