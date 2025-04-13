@@ -15,7 +15,9 @@ export class RecipeService {
     ) {}
 
     async findAll(): Promise<Recipe[]> {
-        return await this.recipeRepo.findAll();
+        return await this.recipeRepo.findAll({
+            populate: ['recipeDetails']
+        });
     }
 
     async findOne(id: number): Promise<Recipe | null> {
