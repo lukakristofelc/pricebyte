@@ -2,6 +2,7 @@ import {Injectable} from '@nestjs/common';
 import {InjectRepository} from '@mikro-orm/nestjs';
 import {EntityManager, EntityRepository} from '@mikro-orm/core';
 import {User} from "../../entities/user.entity";
+import {JwtService} from '@nestjs/jwt';
 
 @Injectable()
 export class UserService {
@@ -9,6 +10,7 @@ export class UserService {
         @InjectRepository(User)
         private readonly userRepo: EntityRepository<User>,
         private readonly em: EntityManager,
+        private readonly jwtService: JwtService
     ) {}
 
     async findAll(): Promise<User[]> {
@@ -28,7 +30,6 @@ export class UserService {
         return user;
     }
 
-
     async remove(id: number): Promise<void> {
         const user = await this.userRepo.findOne({ user_id: id });
         if (user) {
@@ -42,5 +43,29 @@ export class UserService {
 
     async findByEmail(email: string): Promise<User | null> {
         return await this.userRepo.findOne({ email });
+    }
+
+    // New methods for JWT authentication
+
+    generateToken(user: User): string {
+        const payload = {
+            sub: user.user_id,
+            username: user.username,
+            email: user.email
+        };
+
+        return this.jwtService.sign(payload);
+    }
+
+    verifyToken(token: string): any {
+        try {
+            return this.jwtService.verify(token);
+        } catch (error) {
+            return null;
+        }
+    }
+
+    validatePassword(plainPassword: string, hashedPassword: string): boolean {
+        return plainPassword === hashedPassword;
     }
 }

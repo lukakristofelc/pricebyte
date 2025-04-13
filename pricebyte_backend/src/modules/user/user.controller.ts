@@ -37,17 +37,23 @@ export class UserController {
     }
 
     @Post('login')
-    async login(@Body() loginData: LoginDto): Promise<{ success: boolean; user?: User; message?: string }> {
+    async login(@Body() loginData: LoginDto): Promise<{ success: boolean; token?: string; message?: string }> {
         const user = await this.userService.findByEmail(loginData.email);
 
-        if (user) {
-            if (user.password_hash !== loginData.password_hash) {
-                return { success: false, message: 'Invalid password' };
-            }
-            return { success: true, user };
-        } else {
+        if (!user) {
             return { success: false, message: 'User not found' };
         }
+
+        if (user.password_hash !== loginData.password_hash) {
+            return { success: false, message: 'Invalid password' };
+        }
+
+        const token = this.userService.generateToken(user);
+
+        return {
+            success: true,
+            token
+        };
     }
 
     @Get()
