@@ -41,6 +41,9 @@ export class UserController {
         const user = await this.userService.findByEmail(loginData.email);
 
         if (user) {
+            if (user.password_hash !== loginData.password_hash) {
+                return { success: false, message: 'Invalid password' };
+            }
             return { success: true, user };
         } else {
             return { success: false, message: 'User not found' };

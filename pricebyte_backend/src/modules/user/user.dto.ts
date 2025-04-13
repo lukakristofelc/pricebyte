@@ -7,7 +7,7 @@ export class RegisterDto {
 
     @IsString()
     @IsNotEmpty()
-    password_hash: string; // Already hashed from frontend
+    password_hash: string;
 
     @IsEmail()
     @IsNotEmpty()
@@ -18,5 +18,5 @@ export class LoginDto {
     @IsString()
     @IsNotEmpty()
     email: string;
-    password_hash: string; // Already hashed from frontend
+    password_hash: string;
 }
