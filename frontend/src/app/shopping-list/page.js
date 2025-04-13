@@ -147,19 +147,23 @@ export default function ShoppingList() {
         return product?.store === storeName;
       });
 
-      // Convert store items to pantry items
+      // Convert store items to pantry items with full product details
       const pantryItems = storeItems.map(item => {
         const { quantity, ingredient } = parseItemName(item.name);
         const selectedProduct = selectedProducts[ingredient];
         
         return {
-          ...item,
-          quantity,
-          ingredient,
+          name: selectedProduct?.title || ingredient,
+          originalIngredient: ingredient,
+          quantity: quantity,
           purchaseDate: new Date().toISOString(),
-          productTitle: selectedProduct?.title,
-          productPrice: selectedProduct?.displayPrice,
-          productStore: selectedProduct?.store
+          price: selectedProduct?.price || 0,
+          displayPrice: selectedProduct?.displayPrice || 'N/A',
+          image: selectedProduct?.image || '',
+          store: selectedProduct?.store || storeName,
+          // Preserve recipe info if it exists
+          recipeName: item.recipeName,
+          recipeId: item.recipeId
         };
       });
 
@@ -196,13 +200,17 @@ export default function ShoppingList() {
         const selectedProduct = selectedProducts[ingredient];
         
         return {
-          ...item,
-          quantity,
-          ingredient,
+          name: selectedProduct?.title || ingredient,
+          originalIngredient: ingredient,
+          quantity: quantity,
           purchaseDate: new Date().toISOString(),
-          productTitle: selectedProduct?.title,
-          productPrice: selectedProduct?.displayPrice,
-          productStore: selectedProduct?.store
+          price: selectedProduct?.price || 0,
+          displayPrice: selectedProduct?.displayPrice || 'N/A',
+          image: selectedProduct?.image || '',
+          store: selectedProduct?.store || '',
+          // Preserve recipe info if it exists
+          recipeName: item.recipeName,
+          recipeId: item.recipeId
         };
       });
       
