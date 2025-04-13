@@ -480,7 +480,7 @@ export default function ShoppingList() {
             >
               <option value="name">Name</option>
               <option value="price">Price</option>
-              <option value="store">Store</option>
+              {/* <option value="store">Store</option> */}
             </select>
           </div>
           
