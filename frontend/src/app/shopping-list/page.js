@@ -484,7 +484,7 @@ export default function ShoppingList() {
             </select>
           </div>
           
-          <div className="flex items-center gap-2">
+          {/* <div className="flex items-center gap-2">
             <label className="text-sm font-medium">Store:</label>
             <select 
               value={storeFilter}
@@ -495,7 +495,7 @@ export default function ShoppingList() {
               <option value="Mercator">Mercator</option>
               <option value="SPAR">SPAR</option>
             </select>
-          </div>
+          </div> */}
         </div>
       </div>
       
