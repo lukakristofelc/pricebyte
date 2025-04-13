@@ -10,6 +10,8 @@ export default function RecipeDetail() {
   const [error, setError] = useState(null);
   const [addingToList, setAddingToList] = useState(false);
   const [addSuccess, setAddSuccess] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteAdded, setFavoriteAdded] = useState(false);
   
   const { id } = useParams();
   
@@ -45,6 +47,43 @@ export default function RecipeDetail() {
       fetchRecipe();
     }
   }, [id]);
+  
+  // Check if recipe is in favorites when page loads
+  useEffect(() => {
+    if (recipe) {
+      const favorites = JSON.parse(localStorage.getItem('favoriteRecipes') || '[]');
+      const isInFavorites = favorites.some(fav => fav.id === recipe.id);
+      setIsFavorite(isInFavorites);
+    }
+  }, [recipe]);
+
+  const addToFavorites = () => {
+    const favorites = JSON.parse(localStorage.getItem('favoriteRecipes') || '[]');
+    
+    if (isFavorite) {
+      // Remove from favorites
+      const updatedFavorites = favorites.filter(fav => fav.id !== recipe.id);
+      localStorage.setItem('favoriteRecipes', JSON.stringify(updatedFavorites));
+      setIsFavorite(false);
+      setFavoriteAdded(false);
+    } else {
+      // Add to favorites
+      const recipeToSave = {
+        id: recipe.id,
+        name: recipe.name,
+        thumbnail_url: recipe.thumbnail_url,
+        total_time_minutes: recipe.total_time_minutes,
+        user_ratings: recipe.user_ratings
+      };
+      const updatedFavorites = [...favorites, recipeToSave];
+      localStorage.setItem('favoriteRecipes', JSON.stringify(updatedFavorites));
+      setIsFavorite(true);
+      
+      // Show success message
+      setFavoriteAdded(true);
+      setTimeout(() => setFavoriteAdded(false), 3000);
+    }
+  };
 
   const addIngredientsToShoppingList = async () => {
     setAddingToList(true);
@@ -112,7 +151,34 @@ export default function RecipeDetail() {
         />
         
         <div className="p-6">
-          <h1 className="text-3xl font-bold mb-4">{recipe.name}</h1>
+          <div className="flex justify-between items-start mb-4">
+            <h1 className="text-3xl font-bold">{recipe.name}</h1>
+            <button 
+              onClick={addToFavorites}
+              className="p-2 text-red-500 hover:text-red-700 transition-colors"
+              aria-label={isFavorite ? "Remove from favorites" : "Add to favorites"}
+            >
+              <svg 
+                className="w-8 h-8" 
+                fill={isFavorite ? "currentColor" : "none"} 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round" 
+                  strokeWidth="2" 
+                  d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" 
+                />
+              </svg>
+            </button>
+          </div>
+          
+          {favoriteAdded && (
+            <div className="mb-4 p-2 bg-pink-100 text-pink-800 rounded-md">
+              Recipe added to favorites!
+            </div>
+          )}
           
           <button
             onClick={addIngredientsToShoppingList}
