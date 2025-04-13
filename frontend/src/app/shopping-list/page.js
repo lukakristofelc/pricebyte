@@ -101,9 +101,43 @@ export default function ShoppingList() {
   // Buy function to handle checkout process
   const buyItems = () => {
     if (window.confirm('Are you sure you want to buy these items?')) {
-      alert('Thank you for your purchase!');
-      // Clear the list after purchase
+      // Convert shopping list items to pantry items, including selected product information
+      const pantryItems = items.map(item => {
+        // Get the parsed ingredient and quantity if not already available
+        const { quantity, ingredient } = item.quantity && item.ingredient 
+          ? { quantity: item.quantity, ingredient: item.ingredient } 
+          : parseItemName(item.name);
+        
+        // Get the selected product for this ingredient if available
+        const selectedProduct = selectedProducts[ingredient];
+        
+        // Return an enhanced item with product information if available
+        return {
+          ...item,
+          quantity,
+          ingredient,
+          purchaseDate: new Date().toISOString(),
+          productTitle: selectedProduct?.title,
+          productPrice: selectedProduct?.displayPrice,
+          productStore: selectedProduct?.store
+        };
+      });
+      
+      // Get existing pantry items
+      const existingPantryItems = JSON.parse(localStorage.getItem('pantryItems') || '[]');
+      
+      // Combine existing and new pantry items
+      const updatedPantryItems = [...existingPantryItems, ...pantryItems];
+      
+      // Save to pantry in localStorage
+      localStorage.setItem('pantryItems', JSON.stringify(updatedPantryItems));
+      
+      // Clear the shopping list
       clearList();
+      
+      // Show confirmation and redirect to pantry
+      alert('Items have been moved to your pantry!');
+      window.location.href = '/pantry';
     }
   };
 
